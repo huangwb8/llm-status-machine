@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="LLM Status Machine mark">
+  <rect width="64" height="64" rx="14" fill="#101113"/>
+  <path d="M15 18h34v8H15z" fill="#f2f0e8"/>
+  <path d="M15 30h22v8H15z" fill="#19a974"/>
+  <path d="M15 42h30v4H15z" fill="#e4572e"/>
+  <circle cx="49" cy="34" r="5" fill="#2d6cdf"/>
+</svg>

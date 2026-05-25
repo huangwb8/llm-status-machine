@@ -1,0 +1,646 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500;6..72,650&family=Public+Sans:wght@400;500;600;700;800&display=swap");
+
+:root {
+  --paper: #f4f2ec;
+  --paper-strong: #fffdf6;
+  --ink: #101113;
+  --muted: #6d6a61;
+  --line: #d7d1c4;
+  --green: #178f63;
+  --green-soft: #dff3e9;
+  --red: #c74527;
+  --red-soft: #f8ded5;
+  --blue: #245cc7;
+  --blue-soft: #dfe8ff;
+  --yellow: #f3b61f;
+  --shadow: 0 18px 44px rgba(34, 31, 24, 0.12);
+  color: var(--ink);
+  font-family: "Public Sans", "Avenir Next", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    linear-gradient(90deg, rgba(16, 17, 19, 0.035) 1px, transparent 1px) 0 0 / 34px 34px,
+    linear-gradient(rgba(16, 17, 19, 0.035) 1px, transparent 1px) 0 0 / 34px 34px,
+    radial-gradient(circle at top left, rgba(23, 143, 99, 0.18), transparent 30rem),
+    radial-gradient(circle at 70% 0, rgba(229, 87, 46, 0.15), transparent 28rem),
+    var(--paper);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.appShell {
+  min-height: 100vh;
+  padding: 18px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 72px;
+  border: 1px solid var(--ink);
+  background: rgba(255, 253, 246, 0.84);
+  box-shadow: var(--shadow);
+  padding: 12px 14px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand img {
+  width: 48px;
+  height: 48px;
+}
+
+.brand h1,
+.sectionHead h2,
+.panelTitle h2,
+.dockTitle h2 {
+  margin: 0;
+}
+
+.brand h1 {
+  font-family: "Newsreader", Georgia, serif;
+  font-size: clamp(28px, 4vw, 52px);
+  line-height: 0.92;
+}
+
+.brand span,
+.eyebrow,
+.runItem span,
+.envCard span,
+.field span,
+.emptyLine {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.topActions,
+.panelTitle,
+.sectionHead,
+.dockTitle,
+.dockActions,
+.statGrid,
+.choiceBlock h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.workspaceGrid {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(420px, 1fr) minmax(320px, 460px);
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.leftRail,
+.rightRail,
+.centerStage {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.panel,
+.controlDeck,
+.runBoard,
+.environmentDock {
+  border: 1px solid var(--ink);
+  background: rgba(255, 253, 246, 0.9);
+  box-shadow: var(--shadow);
+}
+
+.panel,
+.controlDeck,
+.runBoard {
+  padding: 14px;
+}
+
+.panelTitle {
+  justify-content: space-between;
+  min-height: 32px;
+}
+
+.panelTitle h2,
+.dockTitle h2 {
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.recordList,
+.runList,
+.sessionList,
+.eventStream,
+.transcriptStream,
+.promptMatrix {
+  display: grid;
+  gap: 8px;
+}
+
+.record,
+.runItem,
+.sessionItem,
+.envCard,
+.promptRow,
+.eventLine {
+  border: 1px solid var(--line);
+  background: var(--paper-strong);
+}
+
+.record,
+.runItem,
+.sessionItem,
+.envCard,
+.promptRow button {
+  width: 100%;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--ink);
+  text-align: left;
+  padding: 10px;
+}
+
+.record.active,
+.runItem.active,
+.sessionItem.active,
+.envCard.active,
+.promptRow.selected {
+  border-color: var(--ink);
+  box-shadow: inset 4px 0 0 var(--green);
+}
+
+.editorPane {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  border-top: 1px dashed var(--line);
+  padding-top: 12px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.input,
+.textarea,
+.select {
+  width: 100%;
+  border: 1px solid var(--ink);
+  background: #fffefa;
+  color: var(--ink);
+  padding: 10px;
+  outline: none;
+}
+
+.textarea,
+.commandBox,
+.diffBox,
+.eventLine,
+.changedFiles,
+.artifactList,
+.statGrid {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+.textarea {
+  resize: vertical;
+}
+
+.primary,
+.iconButton,
+.dangerText,
+.segmented button,
+.promptRow button {
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: #fffdf6;
+}
+
+.primary {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 16px;
+  font-weight: 800;
+}
+
+.primary.mini {
+  min-height: 36px;
+  font-size: 13px;
+}
+
+.primary:disabled,
+.promptRow input:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.iconButton {
+  width: 34px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+}
+
+.dangerText {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  justify-self: start;
+  min-height: 32px;
+  padding: 0 10px;
+  background: var(--red-soft);
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.controlDeck {
+  min-height: 420px;
+}
+
+.sectionHead {
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.sectionHead.compact {
+  margin-bottom: 10px;
+}
+
+.sectionHead h2 {
+  font-family: "Newsreader", Georgia, serif;
+  font-size: 38px;
+  line-height: 1;
+}
+
+.eyebrow {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--red);
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.matrix {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 12px;
+}
+
+.choiceBlock {
+  border-top: 4px solid var(--ink);
+  background: rgba(244, 242, 236, 0.72);
+  padding: 12px;
+}
+
+.choiceBlock.wide {
+  grid-column: 1 / -1;
+}
+
+.choiceBlock h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.envPicker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
+  gap: 8px;
+}
+
+.envCard {
+  display: grid;
+  justify-items: start;
+}
+
+.promptRow {
+  display: grid;
+  grid-template-columns: 1fr 70px;
+}
+
+.promptRow button {
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+}
+
+.promptRow button span {
+  width: 22px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--ink);
+  background: var(--blue-soft);
+}
+
+.promptRow input {
+  width: 70px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: #fffefa;
+  text-align: center;
+}
+
+.segmented {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 1px solid var(--ink);
+}
+
+.segmented button {
+  min-height: 44px;
+  background: #fffefa;
+  color: var(--ink);
+  border: 0;
+}
+
+.segmented button.active {
+  background: var(--ink);
+  color: #fffdf6;
+}
+
+.runItem,
+.sessionItem {
+  justify-content: space-between;
+}
+
+.runItem div {
+  display: grid;
+  gap: 3px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--ink);
+  background: #fffefa;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pill-running {
+  background: var(--yellow);
+}
+
+.pill-completed,
+.pill-ready {
+  background: var(--green-soft);
+  color: var(--green);
+  border-color: var(--green);
+}
+
+.pill-failed {
+  background: var(--red-soft);
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.tallPanel {
+  min-height: 260px;
+}
+
+.sessionDetail {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.statGrid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  font-size: 12px;
+}
+
+.statGrid span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.commandBox,
+.diffBox {
+  margin: 0;
+  border: 1px solid var(--line);
+  background: #101113;
+  color: #f5f1e8;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.commandBox {
+  max-height: 90px;
+  padding: 10px;
+  font-size: 11px;
+}
+
+.changedFiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.changedFiles span,
+.artifactList a,
+.artifactList span {
+  border: 1px solid var(--line);
+  background: var(--blue-soft);
+  padding: 4px 6px;
+}
+
+.artifactList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.artifactList a {
+  color: var(--blue);
+  text-decoration: none;
+}
+
+.diffPanel {
+  min-height: 320px;
+}
+
+.diffBox {
+  height: 250px;
+  padding: 12px;
+  font-size: 11px;
+}
+
+.transcriptPanel {
+  min-height: 260px;
+}
+
+.eventPanel {
+  min-height: 220px;
+}
+
+.eventStream,
+.transcriptStream {
+  max-height: 230px;
+  overflow: auto;
+}
+
+.eventLine {
+  display: grid;
+  grid-template-columns: 76px 110px 1fr;
+  gap: 8px;
+  padding: 8px;
+  font-size: 11px;
+}
+
+.eventLine span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.eventLine.stderr,
+.eventLine.error,
+.toast {
+  border-color: var(--red);
+  background: var(--red-soft);
+}
+
+.eventLine.stdout {
+  border-color: var(--green);
+  background: var(--green-soft);
+}
+
+.emptyLine {
+  min-height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--line);
+}
+
+.emptyLine.tall {
+  min-height: 100px;
+}
+
+.environmentDock {
+  margin-top: 14px;
+  padding: 14px;
+}
+
+.envForm {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.envForm .field:nth-child(7),
+.dockActions {
+  grid-column: 1 / -1;
+}
+
+.dockActions {
+  justify-content: flex-end;
+}
+
+.dockActions .select {
+  max-width: 260px;
+}
+
+.toast {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--red);
+  color: var(--red);
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+.hiddenDialog {
+  display: none;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 1180px) {
+  .workspaceGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .leftRail,
+  .rightRail {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+
+  .envForm {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .appShell {
+    padding: 10px;
+  }
+
+  .topbar,
+  .sectionHead,
+  .dockActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .brand h1 {
+    font-size: 30px;
+  }
+
+  .matrix,
+  .envForm {
+    grid-template-columns: 1fr;
+  }
+
+  .eventLine {
+    grid-template-columns: 1fr;
+  }
+}

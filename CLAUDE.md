@@ -1,0 +1,12 @@
+# LLM Status Machine - Claude Code 项目指令
+
+## 核心指令
+
+@./AGENTS.md
+
+## Claude Code 特定说明
+
+- `AGENTS.md` 是通用指令源；本文件只补充 Claude Code 适配
+- 引用文件用 Markdown 链接，必要时带行号：`[file.md:42](path/file.md#L42)`
+- 复杂任务用 TodoWrite；改代码前先读文件，优先精确编辑
+- 避免无关重构；修改 `AGENTS.md` 后更新 `CHANGELOG.md`
