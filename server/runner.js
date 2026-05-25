@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import { nanoid } from "nanoid";
 import { RUNS_DIR, mutateStore, timestamp } from "./store.js";
 import { SNAPSHOT_BRANCH, changedFiles, commitSnapshot, diffPatch, diffStat, initRepo } from "./git.js";
+import { createExecutionPlan } from "./experimentPlan.js";
 
 const serverDir = path.dirname(new URL(import.meta.url).pathname);
 const simulatorPath = path.join(serverDir, "simulator.js");
@@ -130,9 +131,9 @@ async function recordSessionEvent(runId, sessionId, event) {
   await persistEvent(runId, sessionId, event);
 }
 
-async function runSession({ run, prompt, environment, state, iteration }) {
+async function runSession({ run, prompt, environment, state, iteration, sequence, sourceWorkspace, outputLabel }) {
   const sessionId = nanoid(12);
-  const sessionDir = path.join(RUNS_DIR, run.id, sessionId);
+  const sessionDir = outputLabel ? path.join(RUNS_DIR, run.id, outputLabel) : path.join(RUNS_DIR, run.id, sessionId);
   const workspace = path.join(sessionDir, "workspace");
   const paths = getSessionPaths(sessionDir);
   await fs.mkdir(sessionDir, { recursive: true });
@@ -147,8 +148,12 @@ async function runSession({ run, prompt, environment, state, iteration }) {
     promptId: prompt.id,
     promptName: prompt.name,
     iteration,
+    sequence,
+    inputStateName: sequence === 1 ? state.name : `state-${sequence - 1}`,
+    outputStateName: outputLabel,
     status: "running",
     branch: SNAPSHOT_BRANCH,
+    sourceWorkspace,
     workspace,
     command: "",
     startedAt: timestamp(),
@@ -175,7 +180,7 @@ async function runSession({ run, prompt, environment, state, iteration }) {
   };
 
   try {
-    await copyWorkspace(state.path, workspace);
+    await copyWorkspace(sourceWorkspace || state.path, workspace);
     session.initialCommit = await initRepo(workspace);
     const promptFile = path.join(sessionDir, "prompt.txt");
     await fs.writeFile(promptFile, prompt.body);
@@ -214,7 +219,10 @@ async function runSession({ run, prompt, environment, state, iteration }) {
     const files = snapshot.changed ? await changedFiles(workspace) : [];
     const stat = snapshot.changed ? await diffStat(workspace) : "";
     await fs.writeFile(path.join(sessionDir, "diff.patch"), patch);
-    await fs.writeFile(path.join(sessionDir, "metadata.json"), JSON.stringify({ prompt, environment, state, branch: SNAPSHOT_BRANCH }, null, 2));
+    await fs.writeFile(
+      path.join(sessionDir, "metadata.json"),
+      JSON.stringify({ prompt, environment, state, branch: SNAPSHOT_BRANCH, sourceWorkspace: sourceWorkspace || state.path, outputLabel }, null, 2)
+    );
     const artifacts = await listArtifacts(paths.artifacts);
 
     await patchRun(run.id, (storedRun) => {
@@ -317,15 +325,14 @@ export async function startRun(config) {
     const stored = await mutateStore((store) => store);
     const state = stored.states.find((item) => item.id === config.stateId);
     const environment = stored.environments.find((item) => item.id === config.environmentId);
-    const jobs = [];
-    for (const selection of config.promptRuns) {
-      const prompt = stored.prompts.find((item) => item.id === selection.promptId);
-      if (!prompt) continue;
-      const count = Math.max(1, Number(selection.count || 1));
-      for (let iteration = 1; iteration <= count; iteration += 1) {
-        jobs.push({ run, prompt, environment, state, iteration });
-      }
-    }
+    const jobs = createExecutionPlan({
+      mode: run.mode,
+      runId: run.id,
+      initialWorkspace: state.path,
+      promptRuns: config.promptRuns,
+      prompts: stored.prompts,
+      outputWorkspaceFor: ({ outputLabel }) => path.join(RUNS_DIR, run.id, outputLabel, "workspace")
+    }).map((job) => ({ ...job, run, environment, state }));
 
     try {
       if (run.mode === "parallel") {

@@ -1,19 +1,20 @@
 @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500;6..72,650&family=Public+Sans:wght@400;500;600;700;800&display=swap");
 
 :root {
-  --paper: #f4f2ec;
-  --paper-strong: #fffdf6;
-  --ink: #101113;
-  --muted: #6d6a61;
-  --line: #d7d1c4;
-  --green: #178f63;
-  --green-soft: #dff3e9;
-  --red: #c74527;
-  --red-soft: #f8ded5;
-  --blue: #245cc7;
-  --blue-soft: #dfe8ff;
-  --yellow: #f3b61f;
-  --shadow: 0 18px 44px rgba(34, 31, 24, 0.12);
+  --page: #eef1f0;
+  --surface: #fbfcf8;
+  --surface-2: #e8edf1;
+  --ink: #111417;
+  --muted: #64706f;
+  --line: #b9c2bf;
+  --green: #14835f;
+  --green-soft: #dcefe6;
+  --red: #c64d35;
+  --red-soft: #f4ded8;
+  --blue: #275db8;
+  --blue-soft: #dfe8fb;
+  --amber: #e2ad27;
+  --shadow: 0 16px 36px rgba(20, 29, 34, 0.11);
   color: var(--ink);
   font-family: "Public Sans", "Avenir Next", sans-serif;
   font-synthesis: none;
@@ -29,11 +30,9 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background:
-    linear-gradient(90deg, rgba(16, 17, 19, 0.035) 1px, transparent 1px) 0 0 / 34px 34px,
-    linear-gradient(rgba(16, 17, 19, 0.035) 1px, transparent 1px) 0 0 / 34px 34px,
-    radial-gradient(circle at top left, rgba(23, 143, 99, 0.18), transparent 30rem),
-    radial-gradient(circle at 70% 0, rgba(229, 87, 46, 0.15), transparent 28rem),
-    var(--paper);
+    linear-gradient(90deg, rgba(17, 20, 23, 0.045) 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(rgba(17, 20, 23, 0.045) 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(135deg, #eef1f0 0%, #dde7e4 48%, #edf0f5 100%);
 }
 
 button,
@@ -52,22 +51,37 @@ button {
   padding: 18px;
 }
 
+.topbar,
+.viewTabs,
+.panel,
+.controlDeck,
+.runBoard {
+  border: 1px solid var(--ink);
+  background: rgba(251, 252, 248, 0.93);
+  box-shadow: var(--shadow);
+}
+
 .topbar {
+  min-height: 74px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  min-height: 72px;
-  border: 1px solid var(--ink);
-  background: rgba(255, 253, 246, 0.84);
-  box-shadow: var(--shadow);
   padding: 12px 14px;
 }
 
-.brand {
+.brand,
+.topActions,
+.panelTitle,
+.sectionHead,
+.choiceBlock h3,
+.statGrid span,
+.dangerText,
+.primary,
+.viewTabs button {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
 }
 
 .brand img {
@@ -77,8 +91,7 @@ button {
 
 .brand h1,
 .sectionHead h2,
-.panelTitle h2,
-.dockTitle h2 {
+.panelTitle h2 {
   margin: 0;
 }
 
@@ -90,6 +103,7 @@ button {
 
 .brand span,
 .eyebrow,
+.record span,
 .runItem span,
 .envCard span,
 .field span,
@@ -98,205 +112,87 @@ button {
   font-size: 12px;
 }
 
-.topActions,
-.panelTitle,
-.sectionHead,
-.dockTitle,
-.dockActions,
-.statGrid,
-.choiceBlock h3 {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.workspaceGrid {
+.viewTabs {
   display: grid;
-  grid-template-columns: minmax(260px, 320px) minmax(420px, 1fr) minmax(320px, 460px);
-  gap: 14px;
-  margin-top: 14px;
-}
-
-.leftRail,
-.rightRail,
-.centerStage {
-  display: grid;
-  gap: 14px;
-  align-content: start;
-}
-
-.panel,
-.controlDeck,
-.runBoard,
-.environmentDock {
-  border: 1px solid var(--ink);
-  background: rgba(255, 253, 246, 0.9);
-  box-shadow: var(--shadow);
-}
-
-.panel,
-.controlDeck,
-.runBoard {
-  padding: 14px;
-}
-
-.panelTitle {
-  justify-content: space-between;
-  min-height: 32px;
-}
-
-.panelTitle h2,
-.dockTitle h2 {
-  font-size: 15px;
-  text-transform: uppercase;
-  letter-spacing: 0;
-}
-
-.recordList,
-.runList,
-.sessionList,
-.eventStream,
-.transcriptStream,
-.promptMatrix {
-  display: grid;
-  gap: 8px;
-}
-
-.record,
-.runItem,
-.sessionItem,
-.envCard,
-.promptRow,
-.eventLine {
-  border: 1px solid var(--line);
-  background: var(--paper-strong);
-}
-
-.record,
-.runItem,
-.sessionItem,
-.envCard,
-.promptRow button {
-  width: 100%;
-  min-height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  color: var(--ink);
-  text-align: left;
-  padding: 10px;
-}
-
-.record.active,
-.runItem.active,
-.sessionItem.active,
-.envCard.active,
-.promptRow.selected {
-  border-color: var(--ink);
-  box-shadow: inset 4px 0 0 var(--green);
-}
-
-.editorPane {
-  display: grid;
-  gap: 10px;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
   margin-top: 12px;
-  border-top: 1px dashed var(--line);
-  padding-top: 12px;
 }
 
-.field {
-  display: grid;
-  gap: 6px;
-}
-
-.input,
-.textarea,
-.select {
-  width: 100%;
-  border: 1px solid var(--ink);
-  background: #fffefa;
-  color: var(--ink);
-  padding: 10px;
-  outline: none;
-}
-
-.textarea,
-.commandBox,
-.diffBox,
-.eventLine,
-.changedFiles,
-.artifactList,
-.statGrid {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-}
-
-.textarea {
-  resize: vertical;
-}
-
-.primary,
-.iconButton,
-.dangerText,
-.segmented button,
-.promptRow button {
-  border: 1px solid var(--ink);
-  background: var(--ink);
-  color: #fffdf6;
-}
-
-.primary {
-  min-height: 42px;
-  display: inline-flex;
-  align-items: center;
+.viewTabs button {
   justify-content: center;
-  gap: 8px;
-  padding: 0 16px;
+  min-height: 46px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
   font-weight: 800;
 }
 
-.primary.mini {
-  min-height: 36px;
-  font-size: 13px;
+.viewTabs button:last-child {
+  border-right: 0;
 }
 
-.primary:disabled,
-.promptRow input:disabled {
-  opacity: 0.48;
-  cursor: not-allowed;
+.viewTabs button.active {
+  background: var(--ink);
+  color: var(--surface);
 }
 
-.iconButton {
-  width: 34px;
-  height: 34px;
-  display: inline-grid;
-  place-items: center;
-  padding: 0;
+.viewFrame {
+  margin-top: 14px;
 }
 
-.dangerText {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  justify-self: start;
-  min-height: 32px;
-  padding: 0 10px;
-  background: var(--red-soft);
-  color: var(--red);
-  border-color: var(--red);
+.experimentGrid {
+  display: grid;
+  grid-template-columns: minmax(420px, 1.1fr) minmax(320px, 0.9fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.controlDeck,
+.runBoard,
+.panel {
+  padding: 14px;
 }
 
 .controlDeck {
-  min-height: 420px;
+  min-height: 410px;
 }
 
+.runBoard {
+  min-height: 410px;
+}
+
+.sessionsPanel,
+.diffPanel,
+.transcriptPanel,
+.eventPanel {
+  min-height: 260px;
+}
+
+.transcriptPanel,
+.eventPanel {
+  min-width: 0;
+}
+
+.panelTitle,
 .sectionHead {
   justify-content: space-between;
-  margin-bottom: 14px;
+  min-height: 34px;
+  margin-bottom: 12px;
 }
 
-.sectionHead.compact {
-  margin-bottom: 10px;
+.panelTitle {
+  justify-content: flex-start;
+}
+
+.panelTitle .iconButton {
+  margin-left: auto;
+}
+
+.panelTitle h2 {
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0;
 }
 
 .sectionHead h2 {
@@ -315,13 +211,14 @@ button {
 
 .matrix {
   display: grid;
-  grid-template-columns: 1.1fr 0.9fr;
+  grid-template-columns: 1.05fr 0.95fr;
   gap: 12px;
 }
 
 .choiceBlock {
+  min-width: 0;
   border-top: 4px solid var(--ink);
-  background: rgba(244, 242, 236, 0.72);
+  background: var(--surface-2);
   padding: 12px;
 }
 
@@ -334,26 +231,74 @@ button {
   font-size: 14px;
 }
 
-.envPicker {
+.envPicker,
+.recordList,
+.runList,
+.sessionList,
+.promptMatrix,
+.eventStream,
+.splitEditor,
+.editorPane,
+.devtoolsGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
   gap: 8px;
 }
 
+.envPicker {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.record,
+.runItem,
+.sessionItem,
+.envCard,
+.promptRow,
+.eventLine {
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.record,
+.runItem,
+.sessionItem,
+.envCard,
+.promptRow button {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--ink);
+  text-align: left;
+  padding: 10px;
+}
+
+.record.active,
+.runItem.active,
+.sessionItem.active,
+.envCard.active,
+.promptRow.selected {
+  border-color: var(--ink);
+  box-shadow: inset 4px 0 0 var(--green);
+}
+
+.runItem div,
 .envCard {
   display: grid;
+  gap: 3px;
   justify-items: start;
 }
 
 .promptRow {
   display: grid;
-  grid-template-columns: 1fr 70px;
+  grid-template-columns: 1fr 76px;
 }
 
 .promptRow button {
   border: 0;
   background: transparent;
-  color: var(--ink);
+  justify-content: flex-start;
 }
 
 .promptRow button span {
@@ -361,15 +306,16 @@ button {
   height: 22px;
   display: inline-grid;
   place-items: center;
+  flex: 0 0 auto;
   border: 1px solid var(--ink);
   background: var(--blue-soft);
 }
 
 .promptRow input {
-  width: 70px;
+  width: 76px;
   border: 0;
   border-left: 1px solid var(--line);
-  background: #fffefa;
+  background: #fff;
   text-align: center;
 }
 
@@ -381,24 +327,113 @@ button {
 
 .segmented button {
   min-height: 44px;
-  background: #fffefa;
-  color: var(--ink);
   border: 0;
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 800;
 }
 
 .segmented button.active {
   background: var(--ink);
-  color: #fffdf6;
+  color: var(--surface);
 }
 
-.runItem,
-.sessionItem {
-  justify-content: space-between;
+.splitEditor {
+  grid-template-columns: minmax(220px, 320px) minmax(360px, 1fr);
 }
 
-.runItem div {
+.collectionPanel {
+  max-width: 1180px;
+}
+
+.editorPane {
+  border-left: 1px dashed var(--line);
+  padding-left: 14px;
+}
+
+.formGrid {
   display: grid;
-  gap: 3px;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.input,
+.textarea,
+.select {
+  width: 100%;
+  border: 1px solid var(--ink);
+  background: #fff;
+  color: var(--ink);
+  padding: 10px;
+  outline: none;
+}
+
+.textarea {
+  resize: vertical;
+}
+
+.textarea,
+.commandBox,
+.diffBox,
+.eventLine,
+.changedFiles,
+.artifactList,
+.statGrid,
+.apiList code {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+.primary,
+.iconButton,
+.dangerText {
+  border: 1px solid var(--ink);
+}
+
+.primary,
+.iconButton {
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.primary {
+  min-height: 42px;
+  justify-content: center;
+  padding: 0 16px;
+  font-weight: 800;
+}
+
+.primary.mini {
+  min-height: 36px;
+  justify-self: start;
+  font-size: 13px;
+}
+
+.primary:disabled,
+.promptRow input:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.iconButton {
+  width: 34px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+}
+
+.dangerText {
+  justify-self: start;
+  min-height: 34px;
+  padding: 0 10px;
+  background: var(--red-soft);
+  color: var(--red);
+  border-color: var(--red);
 }
 
 .pill {
@@ -409,7 +444,7 @@ button {
   min-height: 24px;
   padding: 0 8px;
   border: 1px solid var(--ink);
-  background: #fffefa;
+  background: #fff;
   color: var(--ink);
   font-size: 11px;
   font-weight: 800;
@@ -417,7 +452,7 @@ button {
 }
 
 .pill-running {
-  background: var(--yellow);
+  background: var(--amber);
 }
 
 .pill-completed,
@@ -433,10 +468,6 @@ button {
   border-color: var(--red);
 }
 
-.tallPanel {
-  min-height: 260px;
-}
-
 .sessionDetail {
   display: grid;
   gap: 10px;
@@ -446,32 +477,34 @@ button {
 .statGrid {
   display: grid;
   grid-template-columns: 1fr auto;
+  gap: 8px;
   font-size: 12px;
-}
-
-.statGrid span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .commandBox,
 .diffBox {
   margin: 0;
   border: 1px solid var(--line);
-  background: #101113;
-  color: #f5f1e8;
+  background: #111417;
+  color: #f4f7f3;
   overflow: auto;
   white-space: pre-wrap;
 }
 
 .commandBox {
-  max-height: 90px;
+  max-height: 96px;
   padding: 10px;
   font-size: 11px;
 }
 
-.changedFiles {
+.diffBox {
+  height: 250px;
+  padding: 12px;
+  font-size: 11px;
+}
+
+.changedFiles,
+.artifactList {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -486,45 +519,19 @@ button {
   padding: 4px 6px;
 }
 
-.artifactList {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  font-size: 11px;
-}
-
 .artifactList a {
   color: var(--blue);
   text-decoration: none;
 }
 
-.diffPanel {
-  min-height: 320px;
-}
-
-.diffBox {
-  height: 250px;
-  padding: 12px;
-  font-size: 11px;
-}
-
-.transcriptPanel {
-  min-height: 260px;
-}
-
-.eventPanel {
-  min-height: 220px;
-}
-
-.eventStream,
-.transcriptStream {
-  max-height: 230px;
+.eventStream {
+  max-height: 250px;
   overflow: auto;
 }
 
 .eventLine {
   display: grid;
-  grid-template-columns: 76px 110px 1fr;
+  grid-template-columns: 76px minmax(86px, 110px) 1fr;
   gap: 8px;
   padding: 8px;
   font-size: 11px;
@@ -559,28 +566,26 @@ button {
   min-height: 100px;
 }
 
-.environmentDock {
-  margin-top: 14px;
-  padding: 14px;
+.devtoolsGrid {
+  grid-template-columns: minmax(280px, 420px) minmax(280px, 1fr);
+  align-items: start;
 }
 
-.envForm {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(120px, 1fr));
-  gap: 10px;
-}
-
-.envForm .field:nth-child(7),
-.dockActions {
+.devtoolsGrid .eventPanel {
   grid-column: 1 / -1;
 }
 
-.dockActions {
-  justify-content: flex-end;
+.apiList {
+  display: grid;
+  gap: 8px;
 }
 
-.dockActions .select {
-  max-width: 260px;
+.apiList code {
+  display: block;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  padding: 10px;
+  font-size: 12px;
 }
 
 .toast {
@@ -594,10 +599,6 @@ button {
   animation: spin 1s linear infinite;
 }
 
-.hiddenDialog {
-  display: none;
-}
-
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -605,42 +606,51 @@ button {
 }
 
 @media (max-width: 1180px) {
-  .workspaceGrid {
+  .experimentGrid,
+  .splitEditor,
+  .devtoolsGrid {
     grid-template-columns: 1fr;
   }
 
-  .leftRail,
-  .rightRail {
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  .editorPane {
+    border-left: 0;
+    border-top: 1px dashed var(--line);
+    padding-left: 0;
+    padding-top: 12px;
   }
 
-  .envForm {
+  .formGrid {
     grid-template-columns: repeat(2, minmax(140px, 1fr));
   }
 }
 
-@media (max-width: 680px) {
+@media (max-width: 720px) {
   .appShell {
     padding: 10px;
   }
 
-  .topbar,
-  .sectionHead,
-  .dockActions {
-    align-items: stretch;
+  .topbar {
+    align-items: flex-start;
     flex-direction: column;
   }
 
-  .brand h1 {
-    font-size: 30px;
+  .viewTabs {
+    grid-template-columns: 1fr;
+  }
+
+  .viewTabs button {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
   }
 
   .matrix,
-  .envForm {
+  .formGrid,
+  .statGrid {
     grid-template-columns: 1fr;
   }
 
-  .eventLine {
-    grid-template-columns: 1fr;
+  .sectionHead {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

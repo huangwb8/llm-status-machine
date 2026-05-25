@@ -5,13 +5,15 @@ A local experiment console for running prompts against LLM coding clients and pr
 ## What It Does
 
 - Manage reusable prompts.
-- Manage LLM environments such as Codex CLI, Claude Code, or any custom command.
-- Register workspace states as local folders.
+- Manage LLM environments as Models, including Codex CLI, Claude Code, or any custom command.
+- Register Workspace states as local folders.
+- Use the Experiment bench to connect Prompts, Models, and Workspace into repeatable runs.
 - Run selected prompts once or many times in serial or parallel mode.
-- Copy every state into an isolated run workspace before execution.
+- In serial mode, copy `state-i` into an isolated workspace, run one prompt attempt, then use that output as `state-i+1` for the next attempt.
+- In parallel mode, keep attempts independent by copying each session from the selected initial Workspace.
 - Initialize git inside each session workspace on a single `main` branch, commit the initial state, run the client, commit the result, and store the diff.
 - Persist every session transcript as newline-delimited JSON plus `stdout.txt`, `stderr.txt`, metadata, artifacts, and patch files.
-- Expose a local API for automation and model interaction.
+- Expose a local API through DevTools for automation and model interaction.
 
 ## Run Locally
 
@@ -116,11 +118,11 @@ curl -X POST http://localhost:4317/api/agent/events \
 ## Data Layout
 
 - `data/store.json`: prompts, environments, states, run metadata
-- `data/runs/<run>/<session>/workspace`: isolated working copy
-- `data/runs/<run>/<session>/diff.patch`: captured code changes
-- `data/runs/<run>/<session>/metadata.json`: prompt/environment/state/branch snapshot
-- `data/runs/<run>/<session>/transcript.ndjson`: lifecycle events, stdout/stderr, and agent-written events
-- `data/runs/<run>/<session>/stdout.txt` and `stderr.txt`: raw process streams
-- `data/runs/<run>/<session>/artifacts`: optional extra files written by the client or API
+- `data/runs/<run>/state-N/workspace`: isolated working copy for a session output state
+- `data/runs/<run>/state-N/diff.patch`: captured code changes
+- `data/runs/<run>/state-N/metadata.json`: prompt/environment/state/branch/source snapshot
+- `data/runs/<run>/state-N/transcript.ndjson`: lifecycle events, stdout/stderr, and agent-written events
+- `data/runs/<run>/state-N/stdout.txt` and `stderr.txt`: raw process streams
+- `data/runs/<run>/state-N/artifacts`: optional extra files written by the client or API
 
 The original state folder is never modified by the runner.

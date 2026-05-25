@@ -10,10 +10,13 @@
 - 增强 session transcript、stdout/stderr、artifact 与运行中 AI 客户端可调用的本地 API。
 - 前端新增 transcript 与 artifact 查看区域，方便复盘模型行为。
 - Dry Run 模拟器会写入 agent event 与 artifact，用于验证记录链路。
+- 新增 Experiment / Prompts / Models / Workspace / DevTools 五个独立界面，Experiment 专门连接 prompt、模型与工作空间。
+- 新增实验编排测试，覆盖串行链式输入与并行独立输入两种模式。
 
 ### Changed（变更）
 
 - 内部 session 工作区的 Git 快照统一固定在 `main` 分支，并在前端 session 详情与 metadata/env 中明确记录分支，减少多分支/多批次理解成本。
+- 串行实验现在会把每轮输出工作区保存为 `state-N`，并将上一轮输出作为下一轮输入；并行实验仍从初始 Workspace 独立复制。
 
 ## [1.0.0] - 2026-05-25
 

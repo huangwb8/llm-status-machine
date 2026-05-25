@@ -7,3 +7,4 @@ data/states/*
 !data/states/.gitkeep
 *.log
 .env
+tmp/
