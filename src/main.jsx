@@ -134,10 +134,22 @@ function SectionHead({ eyebrow, title, icon: Icon, action }) {
   return (
     <div className="sectionHead">
       <div>
-        <span className="eyebrow">{eyebrow}</span>
+        {eyebrow && <span className="eyebrow">{eyebrow}</span>}
         <h2>{title}</h2>
       </div>
       {action || (Icon ? <Icon size={22} /> : null)}
+    </div>
+  );
+}
+
+function Dateline() {
+  const now = new Date();
+  const date = now.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+  const time = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return (
+    <div className="dateline">
+      <strong>The Behavior Ledger</strong>
+      {date} · {time} · LOCAL
     </div>
   );
 }
@@ -544,7 +556,7 @@ function DevToolsView({ store, activeEnv, setActiveEnv, envDraft, setEnvDraft, s
   return (
     <div className="devtoolsGrid">
       <section className="panel">
-        <SectionHead eyebrow="DevTools" title="Base URL" icon={Network} />
+        <SectionHead eyebrow="Endpoint" title="Base URL" icon={Network} />
         <Field label="Model">
           <select
             className="select"
@@ -738,10 +750,13 @@ function App() {
         <div className="brand">
           <img src="/mark.svg" alt="" />
           <div>
-            <h1>LLM Status Machine</h1>
-            <span>{activeViewMeta?.label || "Experiment"}</span>
+            <h1>
+              Status <em>Machine</em>
+            </h1>
+            <span>{activeViewMeta?.label || "Experiment"} · Behavior Bench</span>
           </div>
         </div>
+        <Dateline />
         <div className="topActions">
           <StatusPill status={running ? "running" : "ready"} />
           <IconButton title="Refresh" onClick={() => refresh()}>
