@@ -6,6 +6,7 @@
 
 ### Added（新增）
 
+- 新增 `docs/how-it-works.md`，说明应用从配置实验、生成执行计划、执行 session 到保存 transcript/diff/artifact 的完整工作过程。
 - 新增 Docker 多阶段构建、单容器文件存储 Compose 与完整 Postgres/Redis/API/worker Compose 栈，支持容器内健康检查和非 root 运行。
 - 新增 `STORAGE_DRIVER=file|postgres`、`QUEUE_DRIVER=inline|redis`、`EVENT_BUS=memory|redis`，并加入 Postgres migration、Redis/BullMQ run queue 与独立 worker 进程。
 - 新增 DockerHub 本地直推脚本与 Makefile 入口，支持 `DRY_RUN`、`PUSH=0`、`FORCE`、`SKIP_TESTS`、`ALLOW_DIRTY` 和 amd64/arm64/multiarch profile。
@@ -18,6 +19,8 @@
 - 新增 Experiment / Prompts / Models / Workspace / DevTools 五个独立界面，Experiment 专门连接 prompt、模型与工作空间。
 - 新增实验编排测试，覆盖串行链式输入与并行独立输入两种模式。
 - Workspace 表单新增本机目录选择按钮，通过本地 API 调起系统目录选择器并自动填入路径。
+- Workspace 页面新增一键添加本地文件夹入口，选中目录后会校验路径并自动创建 workspace。
+- 新增工程规则：源代码变更后必须重新构建并部署 Docker 镜像供用户审查。
 
 ### Changed（变更）
 
@@ -28,6 +31,7 @@
 
 ### Fixed（修复）
 
+- 修复本机通过 Docker 端口映射、本机网卡地址或非标准 localhost 入口访问时，Workspace 目录选择器误报只能从 localhost 使用的问题；前端 API 错误提示现在会显示可读文本而不是原始 JSON。
 - 修复跨进程 artifact 写入的路径校验与 session 归属校验，避免伪造 run/session 时写入非 session artifact 目录。
 - 修复 Postgres 模式下 run/session/event 使用整库快照写入导致的并发覆盖风险，改为按 run/session/event 行级更新和 append。
 - 修复 Prompts 编辑时会被后台自动刷新覆盖的问题，并在删除 prompt 后同步清理 Experiment 中的对应选择。
