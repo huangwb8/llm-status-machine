@@ -757,6 +757,13 @@ button { cursor: pointer; }
   box-shadow: 0 0 0 3px var(--lime);
 }
 
+.pathPicker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px;
+  gap: 8px;
+  align-items: center;
+}
+
 .select {
   appearance: none;
   background-image:
@@ -836,6 +843,11 @@ button { cursor: pointer; }
 .iconButton:hover {
   background: var(--ink);
   color: var(--lime);
+}
+
+.iconButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .dangerText {

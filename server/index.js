@@ -11,6 +11,7 @@ import {
   updateItem
 } from "./store.js";
 import { recordAgentEvent, startRun, subscribe, writeAgentArtifact } from "./runner.js";
+import { selectDirectory } from "./systemDialog.js";
 
 const app = express();
 const port = process.env.PORT || 4317;
@@ -37,6 +38,11 @@ async function findSession(sessionId) {
     if (session) return { run, session };
   }
   return null;
+}
+
+function isLocalRequest(req) {
+  const address = req.socket.remoteAddress || "";
+  return ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(address);
 }
 
 for (const collection of ["prompts", "environments", "states"]) {
@@ -77,6 +83,11 @@ app.get("/api/runs/:id", asyncRoute(async (req, res) => {
 app.post("/api/runs", asyncRoute(async (req, res) => {
   const run = await startRun(req.body);
   res.status(202).json(run);
+}));
+
+app.post("/api/system/select-directory", asyncRoute(async (req, res) => {
+  if (!isLocalRequest(req)) return res.status(403).json({ error: "Directory picker is only available from localhost." });
+  res.json(await selectDirectory({ title: req.body?.title || "Select workspace folder" }));
 }));
 
 app.get("/api/sessions/:id/diff", asyncRoute(async (req, res) => {

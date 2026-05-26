@@ -17,6 +17,7 @@
 - Dry Run 模拟器会写入 agent event 与 artifact，用于验证记录链路。
 - 新增 Experiment / Prompts / Models / Workspace / DevTools 五个独立界面，Experiment 专门连接 prompt、模型与工作空间。
 - 新增实验编排测试，覆盖串行链式输入与并行独立输入两种模式。
+- Workspace 表单新增本机目录选择按钮，通过本地 API 调起系统目录选择器并自动填入路径。
 
 ### Changed（变更）
 

@@ -11,6 +11,7 @@ import {
   Database,
   FileDiff,
   Folder,
+  FolderOpen,
   GitBranch,
   History,
   Layers3,
@@ -512,7 +513,19 @@ function ModelsView({ store, activeEnv, setActiveEnv, envDraft, setEnvDraft, sav
   );
 }
 
-function WorkspaceView({ store, activeState, setActiveState, stateDraft, setStateDraft, save, remove, busy }) {
+function WorkspaceView({ store, activeState, setActiveState, stateDraft, setStateDraft, save, remove, busy, pickWorkspaceFolder }) {
+  const [selectingFolder, setSelectingFolder] = useState(false);
+
+  async function pickFolder() {
+    setSelectingFolder(true);
+    try {
+      const selectedPath = await pickWorkspaceFolder();
+      if (selectedPath) setStateDraft({ ...stateDraft, path: selectedPath });
+    } finally {
+      setSelectingFolder(false);
+    }
+  }
+
   return (
     <CollectionEditor
       title="Workspace"
@@ -531,7 +544,12 @@ function WorkspaceView({ store, activeState, setActiveState, stateDraft, setStat
         <TextInput value={stateDraft.name} onChange={(event) => setStateDraft({ ...stateDraft, name: event.target.value })} />
       </Field>
       <Field label="Folder">
-        <TextInput placeholder="/absolute/path/to/workspace" value={stateDraft.path} onChange={(event) => setStateDraft({ ...stateDraft, path: event.target.value })} />
+        <div className="pathPicker">
+          <TextInput placeholder="/absolute/path/to/workspace" value={stateDraft.path} onChange={(event) => setStateDraft({ ...stateDraft, path: event.target.value })} />
+          <IconButton title="Choose folder" disabled={busy || selectingFolder} onClick={pickFolder}>
+            {selectingFolder ? <Loader2 className="spin" size={17} /> : <FolderOpen size={17} />}
+          </IconButton>
+        </div>
       </Field>
       <Field label="Notes">
         <TextArea rows={5} value={stateDraft.description} onChange={(event) => setStateDraft({ ...stateDraft, description: event.target.value })} />
@@ -777,6 +795,17 @@ function App() {
     }
   }
 
+  async function pickWorkspaceFolder() {
+    setError("");
+    try {
+      const result = await api.post("/system/select-directory", { title: "Select workspace folder" });
+      return result.path || "";
+    } catch (err) {
+      setError(err.message);
+      return "";
+    }
+  }
+
   const running = store.runs.some((run) => run.status === "running");
   const activeViewMeta = views.find((view) => view.id === activeView);
 
@@ -868,6 +897,7 @@ function App() {
             save={save}
             remove={remove}
             busy={busy}
+            pickWorkspaceFolder={pickWorkspaceFolder}
           />
         )}
         {activeView === "devtools" && (
