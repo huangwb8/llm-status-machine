@@ -68,6 +68,8 @@ The full stack uses:
 
 The app and worker share `/app/data` for run files. Workspace state paths must use paths visible inside the container. By default `./examples` is mounted read-write at `/workspaces/examples`, so the bundled dry-run state uses `/workspaces/examples/buggy-js`. For real projects, set `WORKSPACES_MOUNT=/host/projects` and register states with container paths such as `/workspaces/examples/project-a`. Set `WORKSPACES_TARGET=/workspaces/github` if you prefer a different container path, and set `WORKSPACES_MOUNT_MODE=ro` only when the source folder should be read-only.
 
+The Workspace directory picker is guarded as a local-machine action because it opens a native dialog on the API host. Open the app through `http://localhost:4317` when using Docker port mapping. To intentionally allow remote browser sessions to trigger that dialog on the server machine, set `DIRECTORY_PICKER_ALLOW_REMOTE=1`.
+
 Codex and Claude CLIs are not installed in the base image. Dry Run and custom commands work out of the box; real LLM clients require extending the image or mounting the CLI, credentials, and workspaces yourself.
 
 ## Worker Mode

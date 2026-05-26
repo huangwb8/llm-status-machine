@@ -30,9 +30,20 @@ import {
 import "./styles.css";
 
 const api = {
+  async ensureOk(response) {
+    if (response.ok) return;
+    const text = await response.text();
+    try {
+      const payload = JSON.parse(text);
+      throw new Error(payload.error || text);
+    } catch (error) {
+      if (error instanceof SyntaxError) throw new Error(text || response.statusText);
+      throw error;
+    }
+  },
   async get(path) {
     const response = await fetch(`/api${path}`);
-    if (!response.ok) throw new Error(await response.text());
+    await this.ensureOk(response);
     return response.json();
   },
   async post(path, body) {
@@ -41,7 +52,7 @@ const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
     });
-    if (!response.ok) throw new Error(await response.text());
+    await this.ensureOk(response);
     return response.json();
   },
   async patch(path, body) {
@@ -50,12 +61,12 @@ const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
     });
-    if (!response.ok) throw new Error(await response.text());
+    await this.ensureOk(response);
     return response.json();
   },
   async delete(path) {
     const response = await fetch(`/api${path}`, { method: "DELETE" });
-    if (!response.ok && response.status !== 204) throw new Error(await response.text());
+    await this.ensureOk(response);
   }
 };
 
@@ -100,6 +111,14 @@ function parseTranscript(raw) {
         return { id: line, type: "raw", payload: line, ts: new Date().toISOString() };
       }
     });
+}
+
+function folderNameFromPath(folderPath) {
+  return String(folderPath || "")
+    .replace(/[\\/]+$/, "")
+    .split(/[\\/]/)
+    .filter(Boolean)
+    .pop() || "";
 }
 
 function StatusPill({ status }) {
@@ -513,14 +532,48 @@ function ModelsView({ store, activeEnv, setActiveEnv, envDraft, setEnvDraft, sav
   );
 }
 
-function WorkspaceView({ store, activeState, setActiveState, stateDraft, setStateDraft, save, remove, busy, pickWorkspaceFolder }) {
+function WorkspaceView({
+  store,
+  activeState,
+  setActiveState,
+  stateDraft,
+  setStateDraft,
+  save,
+  remove,
+  busy,
+  pickWorkspaceFolder,
+  createWorkspaceFromFolder
+}) {
   const [selectingFolder, setSelectingFolder] = useState(false);
 
   async function pickFolder() {
     setSelectingFolder(true);
     try {
       const selectedPath = await pickWorkspaceFolder();
-      if (selectedPath) setStateDraft({ ...stateDraft, path: selectedPath });
+      if (selectedPath) {
+        setStateDraft({
+          ...stateDraft,
+          name: stateDraft.name || folderNameFromPath(selectedPath),
+          path: selectedPath
+        });
+      }
+    } finally {
+      setSelectingFolder(false);
+    }
+  }
+
+  async function addLocalFolder() {
+    setSelectingFolder(true);
+    try {
+      const item = await createWorkspaceFromFolder({
+        path: activeState ? "" : stateDraft.path,
+        name: stateDraft.name,
+        description: stateDraft.description
+      });
+      if (item) {
+        setActiveState(item.id);
+        setStateDraft(item);
+      }
     } finally {
       setSelectingFolder(false);
     }
@@ -540,6 +593,12 @@ function WorkspaceView({ store, activeState, setActiveState, stateDraft, setStat
       }}
       onDelete={(id) => remove("states", id, setActiveState)}
     >
+      <div className="workspaceActions">
+        <button className="secondary mini" disabled={busy || selectingFolder} onClick={addLocalFolder}>
+          {selectingFolder ? <Loader2 className="spin" size={16} /> : <FolderOpen size={16} />}
+          Add Local Folder
+        </button>
+      </div>
       <Field label="Name">
         <TextInput value={stateDraft.name} onChange={(event) => setStateDraft({ ...stateDraft, name: event.target.value })} />
       </Field>
@@ -806,6 +865,27 @@ function App() {
     }
   }
 
+  async function createWorkspaceFromFolder({ path: folderPath, name, description } = {}) {
+    setBusy(true);
+    setError("");
+    try {
+      let selectedPath = String(folderPath || "").trim();
+      if (!selectedPath) {
+        const result = await api.post("/system/select-directory", { title: "Add local workspace folder" });
+        selectedPath = result.path || "";
+      }
+      if (!selectedPath) return null;
+      const item = await api.post("/states/from-directory", { path: selectedPath, name, description });
+      await refresh();
+      return item;
+    } catch (err) {
+      setError(err.message);
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const running = store.runs.some((run) => run.status === "running");
   const activeViewMeta = views.find((view) => view.id === activeView);
 
@@ -898,6 +978,7 @@ function App() {
             remove={remove}
             busy={busy}
             pickWorkspaceFolder={pickWorkspaceFolder}
+            createWorkspaceFromFolder={createWorkspaceFromFolder}
           />
         )}
         {activeView === "devtools" && (

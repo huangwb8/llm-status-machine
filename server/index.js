@@ -12,6 +12,8 @@ import {
 } from "./store.js";
 import { recordAgentEvent, startRun, subscribe, writeAgentArtifact } from "./runner.js";
 import { selectDirectory } from "./systemDialog.js";
+import { createStateFromDirectory } from "./workspaceStates.js";
+import { isDirectoryPickerRequestAllowed } from "./localRequest.js";
 
 const app = express();
 const port = process.env.PORT || 4317;
@@ -38,11 +40,6 @@ async function findSession(sessionId) {
     if (session) return { run, session };
   }
   return null;
-}
-
-function isLocalRequest(req) {
-  const address = req.socket.remoteAddress || "";
-  return ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(address);
 }
 
 for (const collection of ["prompts", "environments", "states"]) {
@@ -86,8 +83,22 @@ app.post("/api/runs", asyncRoute(async (req, res) => {
 }));
 
 app.post("/api/system/select-directory", asyncRoute(async (req, res) => {
-  if (!isLocalRequest(req)) return res.status(403).json({ error: "Directory picker is only available from localhost." });
+  if (!isDirectoryPickerRequestAllowed(req)) {
+    return res.status(403).json({
+      error: `Directory picker is only available from this machine. Open the app at http://localhost:${port} or set DIRECTORY_PICKER_ALLOW_REMOTE=1 to allow remote browser sessions.`
+    });
+  }
   res.json(await selectDirectory({ title: req.body?.title || "Select workspace folder" }));
+}));
+
+app.post("/api/states/from-directory", asyncRoute(async (req, res) => {
+  const item = await createStateFromDirectory({
+    folderPath: req.body?.path,
+    name: req.body?.name,
+    description: req.body?.description,
+    createItem
+  });
+  res.status(201).json(item);
 }));
 
 app.get("/api/sessions/:id/diff", asyncRoute(async (req, res) => {
@@ -162,7 +173,8 @@ app.get(/.*/, async (_req, res, next) => {
 
 app.use((error, _req, res, _next) => {
   console.error(error);
-  res.status(500).json({ error: error.message || "Internal server error" });
+  const status = error.status || error.statusCode || 500;
+  res.status(status).json({ error: error.message || "Internal server error" });
 });
 
 app.listen(port, host, () => {
