@@ -40,13 +40,13 @@ If `node_modules` is already a local directory, rerun with `MIGRATE=1 npm run de
 Build the local image:
 
 ```bash
-docker build -t llm-status-machine:local .
+docker build -f deploy/Dockerfile -t llm-status-machine:local .
 ```
 
 Run the single-container file-storage profile:
 
 ```bash
-docker compose -f docker-compose.file.yml up --build
+docker compose --project-directory . -f deploy/docker-compose.file.yml up --build
 curl http://localhost:4317/api/health
 ```
 
@@ -54,7 +54,7 @@ Run the full stack with Postgres, Redis, API, and worker:
 
 ```bash
 cp .env.example .env
-docker compose up --build
+docker compose --project-directory . -f deploy/docker-compose.yml up --build
 curl http://localhost:4317/api/health
 ```
 

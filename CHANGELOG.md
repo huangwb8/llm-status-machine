@@ -20,6 +20,7 @@
 
 ### Changed（变更）
 
+- Docker 相关部署文件集中到 `deploy/`：移动 Dockerfile、Compose 文件与 DockerHub 发布脚本，并保留根目录 `.dockerignore` 作为 build context 规则。
 - Docker Compose 的 workspace bind mount 默认改为读写，并新增 `WORKSPACES_TARGET` 与 `WORKSPACES_MOUNT_MODE` 配置；同时让 compose 使用 `.env` 中的 `DEFAULT_STATE_PATH`，便于真实本地项目作为可写工作区接入。
 - 内部 session 工作区的 Git 快照统一固定在 `main` 分支，并在前端 session 详情与 metadata/env 中明确记录分支，减少多分支/多批次理解成本。
 - 串行实验现在会把每轮输出工作区保存为 `state-N`，并将上一轮输出作为下一轮输入；并行实验仍从初始 Workspace 独立复制。

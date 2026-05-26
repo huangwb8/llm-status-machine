@@ -1,7 +1,10 @@
+name: llm-status-machine
+
 services:
   app:
     build:
       context: .
+      dockerfile: deploy/Dockerfile
     image: ${IMAGE:-llm-status-machine:local}
     ports:
       - "${BIND_HOST:-0.0.0.0}:${PORT:-4317}:4317"

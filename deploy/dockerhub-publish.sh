@@ -62,7 +62,7 @@ require_repo_root() {
   [[ "$(pwd -P)" == "${REPO_ROOT}" ]] || fail "run this script from the repository root: ${REPO_ROOT}"
   [[ -f "${REPO_ROOT}/package.json" ]] || fail "missing package.json"
   [[ -f "${REPO_ROOT}/package-lock.json" ]] || fail "missing package-lock.json"
-  [[ -f "${REPO_ROOT}/Dockerfile" ]] || fail "missing Dockerfile"
+  [[ -f "${REPO_ROOT}/deploy/Dockerfile" ]] || fail "missing deploy/Dockerfile"
   [[ -x "${REPO_ROOT}/deploy/docker-entrypoint.sh" ]] || fail "deploy/docker-entrypoint.sh must exist and be executable"
 }
 
@@ -193,6 +193,7 @@ build_and_publish() {
   args=(
     docker buildx build
     --platform "${platform}"
+    --file "${REPO_ROOT}/deploy/Dockerfile"
     --provenance=false
     --label "org.opencontainers.image.source=https://github.com/huangwb8/llm-status-machine"
     --label "org.opencontainers.image.revision=${commit}"

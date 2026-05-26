@@ -13,13 +13,13 @@ deps-link:
 	@bash tools/use-external-node-modules.sh
 
 docker-build:
-	@docker build -t llm-status-machine:local .
+	@docker build -f deploy/Dockerfile -t llm-status-machine:local .
 
 compose-file:
-	@docker compose -f docker-compose.file.yml up --build
+	@docker compose --project-directory . -f deploy/docker-compose.file.yml up --build
 
 compose-up:
-	@docker compose up --build
+	@docker compose --project-directory . -f deploy/docker-compose.yml up --build
 
 dockerhub-publish:
-	@IMAGE="$(IMAGE)" VERSION="$(VERSION)" PROFILE="$(PROFILE)" PUSH="$(PUSH)" DRY_RUN="$(DRY_RUN)" FORCE="$(FORCE)" SKIP_TESTS="$(SKIP_TESTS)" ALLOW_DIRTY="$(ALLOW_DIRTY)" bash tools/dockerhub-publish.sh
+	@IMAGE="$(IMAGE)" VERSION="$(VERSION)" PROFILE="$(PROFILE)" PUSH="$(PUSH)" DRY_RUN="$(DRY_RUN)" FORCE="$(FORCE)" SKIP_TESTS="$(SKIP_TESTS)" ALLOW_DIRTY="$(ALLOW_DIRTY)" bash deploy/dockerhub-publish.sh
