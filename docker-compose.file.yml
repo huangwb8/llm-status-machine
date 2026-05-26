@@ -1,0 +1,35 @@
+services:
+  app:
+    build:
+      context: .
+    image: ${IMAGE:-llm-status-machine:local}
+    ports:
+      - "${BIND_HOST:-0.0.0.0}:${PORT:-4317}:4317"
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 4317
+      STORAGE_DRIVER: file
+      QUEUE_DRIVER: inline
+      EVENT_BUS: memory
+      DATA_DIR: /app/data
+      RUNS_DIR: /app/data/runs
+      DEFAULT_STATE_PATH: ${DEFAULT_STATE_PATH:-/workspaces/examples/buggy-js}
+      LLM_STATUS_MACHINE_API: ${LLM_STATUS_MACHINE_API:-http://localhost:4317}
+    volumes:
+      - llm_status_data:/app/data
+      - "${WORKSPACES_MOUNT:-./examples}:${WORKSPACES_TARGET:-/workspaces/examples}:${WORKSPACES_MOUNT_MODE:-rw}"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4317/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  llm_status_data:

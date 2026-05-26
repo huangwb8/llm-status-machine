@@ -14,6 +14,7 @@ import { recordAgentEvent, startRun, subscribe, writeAgentArtifact } from "./run
 
 const app = express();
 const port = process.env.PORT || 4317;
+const host = process.env.HOST || "127.0.0.1";
 const distDir = path.join(process.cwd(), "dist");
 
 app.use(cors());
@@ -129,7 +130,13 @@ app.get("/api/events", (req, res) => {
 });
 
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, name: "llm-status-machine" });
+  res.json({
+    ok: true,
+    name: "llm-status-machine",
+    storage: process.env.STORAGE_DRIVER || "file",
+    queue: process.env.QUEUE_DRIVER || "inline",
+    eventBus: process.env.EVENT_BUS || "memory"
+  });
 });
 
 app.use(express.static(distDir));
@@ -147,6 +154,6 @@ app.use((error, _req, res, _next) => {
   res.status(500).json({ error: error.message || "Internal server error" });
 });
 
-app.listen(port, () => {
-  console.log(`LLM Status Machine API listening on http://localhost:${port}`);
+app.listen(port, host, () => {
+  console.log(`LLM Status Machine API listening on http://${host}:${port}`);
 });

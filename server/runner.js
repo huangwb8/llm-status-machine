@@ -2,36 +2,27 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { nanoid } from "nanoid";
-import { RUNS_DIR, mutateStore, timestamp } from "./store.js";
+import {
+  RUNS_DIR,
+  addSession,
+  appendSessionEvent,
+  createRun,
+  getSession,
+  getItem,
+  listCollection,
+  patchRun,
+  patchSession,
+  timestamp
+} from "./store.js";
 import { SNAPSHOT_BRANCH, changedFiles, commitSnapshot, diffPatch, diffStat, initRepo } from "./git.js";
 import { createExecutionPlan } from "./experimentPlan.js";
+import { emit, subscribe } from "./events.js";
+import { enqueueRunJob } from "./queue.js";
 
 const serverDir = path.dirname(new URL(import.meta.url).pathname);
 const simulatorPath = path.join(serverDir, "simulator.js");
-const listeners = new Set();
 const activeSessions = new Map();
-
-export function subscribe(listener) {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-function broadcast(event) {
-  for (const listener of listeners) listener(event);
-}
-
-function emit(runId, sessionId, type, payload) {
-  const event = {
-    id: nanoid(10),
-    runId,
-    sessionId,
-    type,
-    payload,
-    ts: timestamp()
-  };
-  broadcast(event);
-  return event;
-}
+export { subscribe };
 
 function getSessionPaths(sessionDir) {
   return {
@@ -56,6 +47,22 @@ async function listArtifacts(artifactsDir) {
     files.push({ name: entry.name, size: stat?.size ?? 0 });
   }
   return files.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function findStoredSession(runId, sessionId) {
+  return getSession(runId, sessionId);
+}
+
+async function resolveSessionPaths(runId, sessionId) {
+  const active = activeSessions.get(sessionId);
+  if (active) {
+    if (active.runId !== runId) throw new Error("Session does not belong to run");
+    return active.paths;
+  }
+
+  const stored = await findStoredSession(runId, sessionId);
+  if (!stored) throw new Error("Session not found");
+  return getSessionPaths(path.dirname(stored.session.workspace));
 }
 
 async function copyWorkspace(source, target) {
@@ -104,34 +111,19 @@ function runCommand(command, cwd, env, timeoutMs, onEvent) {
   });
 }
 
-async function patchRun(runId, patcher) {
-  return mutateStore((store) => {
-    const run = store.runs.find((item) => item.id === runId);
-    if (!run) return null;
-    patcher(run);
-    run.updatedAt = timestamp();
-    return run;
-  });
-}
-
 async function persistEvent(runId, sessionId, event) {
-  await patchRun(runId, (run) => {
-    const session = run.sessions.find((item) => item.id === sessionId);
-    if (session) session.events.push(event);
-  });
+  await appendSessionEvent(runId, sessionId, event);
 }
 
 async function recordSessionEvent(runId, sessionId, event) {
-  const active = activeSessions.get(sessionId);
-  if (active) {
-    await appendLine(active.paths.transcript, JSON.stringify(event));
-    if (event.type === "stdout") await fs.appendFile(active.paths.stdout, String(event.payload));
-    if (event.type === "stderr") await fs.appendFile(active.paths.stderr, String(event.payload));
-  }
+  const paths = await resolveSessionPaths(runId, sessionId);
+  await appendLine(paths.transcript, JSON.stringify(event));
+  if (event.type === "stdout") await fs.appendFile(paths.stdout, String(event.payload));
+  if (event.type === "stderr") await fs.appendFile(paths.stderr, String(event.payload));
   await persistEvent(runId, sessionId, event);
 }
 
-async function runSession({ run, prompt, environment, state, iteration, sequence, sourceWorkspace, outputLabel }) {
+export async function runSession({ run, prompt, environment, state, iteration, sequence, sourceWorkspace, outputLabel }) {
   const sessionId = nanoid(12);
   const sessionDir = outputLabel ? path.join(RUNS_DIR, run.id, outputLabel) : path.join(RUNS_DIR, run.id, sessionId);
   const workspace = path.join(sessionDir, "workspace");
@@ -170,12 +162,10 @@ async function runSession({ run, prompt, environment, state, iteration, sequence
   };
   activeSessions.set(sessionId, { runId: run.id, sessionDir, workspace, paths });
 
-  await patchRun(run.id, (storedRun) => {
-    storedRun.sessions.push(session);
-  });
+  await addSession(run.id, session);
 
   const remember = async (type, payload) => {
-    const event = emit(run.id, sessionId, type, payload);
+    const event = await emit(run.id, sessionId, type, payload);
     await recordSessionEvent(run.id, sessionId, event);
   };
 
@@ -207,8 +197,7 @@ async function runSession({ run, prompt, environment, state, iteration, sequence
       ...(environment.envVars || {})
     };
 
-    await patchRun(run.id, (storedRun) => {
-      const storedSession = storedRun.sessions.find((item) => item.id === sessionId);
+    await patchSession(run.id, sessionId, (storedSession) => {
       Object.assign(storedSession, { command, branch: SNAPSHOT_BRANCH, initialCommit: session.initialCommit });
     });
 
@@ -225,8 +214,7 @@ async function runSession({ run, prompt, environment, state, iteration, sequence
     );
     const artifacts = await listArtifacts(paths.artifacts);
 
-    await patchRun(run.id, (storedRun) => {
-      const storedSession = storedRun.sessions.find((item) => item.id === sessionId);
+    await patchSession(run.id, sessionId, (storedSession) => {
       Object.assign(storedSession, {
         status: result.code === 0 && !result.timedOut ? "completed" : "failed",
         endedAt: timestamp(),
@@ -241,12 +229,9 @@ async function runSession({ run, prompt, environment, state, iteration, sequence
     });
     await remember("session_finished", { ...result, changed: snapshot.changed, changedFiles: files, artifacts });
   } catch (error) {
-    await patchRun(run.id, (storedRun) => {
-      const storedSession = storedRun.sessions.find((item) => item.id === sessionId);
-      if (storedSession) {
-        storedSession.status = "failed";
-        storedSession.endedAt = timestamp();
-      }
+    await patchSession(run.id, sessionId, (storedSession) => {
+      storedSession.status = "failed";
+      storedSession.endedAt = timestamp();
     });
     await remember("error", error.stack || error.message);
   } finally {
@@ -256,7 +241,8 @@ async function runSession({ run, prompt, environment, state, iteration, sequence
 
 export async function recordAgentEvent({ runId, sessionId, type, payload }) {
   if (!runId || !sessionId) throw new Error("runId and sessionId are required");
-  const event = emit(runId, sessionId, type || "agent_event", payload ?? null);
+  await resolveSessionPaths(runId, sessionId);
+  const event = await emit(runId, sessionId, type || "agent_event", payload ?? null);
   await recordSessionEvent(runId, sessionId, event);
   return event;
 }
@@ -265,19 +251,20 @@ export async function writeAgentArtifact({ runId, sessionId, name, content, enco
   if (!runId || !sessionId) throw new Error("runId and sessionId are required");
   if (!name) throw new Error("Artifact name is required");
 
-  const active = activeSessions.get(sessionId);
-  const artifactsDir = active?.paths.artifacts ?? path.join(RUNS_DIR, runId, sessionId, "artifacts");
+  const paths = await resolveSessionPaths(runId, sessionId);
+  const artifactsDir = path.resolve(paths.artifacts);
   await fs.mkdir(artifactsDir, { recursive: true });
 
   const safeName = path.basename(name).replace(/[^\w.-]/g, "_");
   if (!safeName) throw new Error("Artifact name is invalid");
   const body = encoding === "base64" ? Buffer.from(String(content || ""), "base64") : String(content ?? "");
-  await fs.writeFile(path.join(artifactsDir, safeName), body);
+  const artifactPath = path.resolve(artifactsDir, safeName);
+  if (!artifactPath.startsWith(`${artifactsDir}${path.sep}`)) throw new Error("Artifact path is invalid");
+  await fs.writeFile(artifactPath, body);
 
   const artifacts = await listArtifacts(artifactsDir);
-  await patchRun(runId, (storedRun) => {
-    const session = storedRun.sessions.find((item) => item.id === sessionId);
-    if (session) session.artifacts = artifacts;
+  await patchSession(runId, sessionId, (session) => {
+    session.artifacts = artifacts;
   });
 
   const size = Buffer.isBuffer(body) ? body.length : Buffer.byteLength(body);
@@ -285,75 +272,99 @@ export async function writeAgentArtifact({ runId, sessionId, name, content, enco
   return { name: safeName, size };
 }
 
-export async function startRun(config) {
-  let run;
-  await mutateStore((store) => {
-    const state = store.states.find((item) => item.id === config.stateId);
-    const environment = store.environments.find((item) => item.id === config.environmentId);
-    const prompts = config.promptRuns
-      .map((selection) => {
-        const prompt = store.prompts.find((item) => item.id === selection.promptId);
-        return prompt ? { ...selection, prompt } : null;
-      })
-      .filter(Boolean);
+export async function processRunJob({ runId }) {
+  const run = await getItem("runs", runId);
+  if (!run) throw new Error(`Run not found: ${runId}`);
 
-    if (!state) throw new Error("State not found");
-    if (!environment) throw new Error("Environment not found");
-    if (!prompts.length) throw new Error("Select at least one prompt");
+  const [states, environments, prompts] = await Promise.all([
+    listCollection("states"),
+    listCollection("environments"),
+    listCollection("prompts")
+  ]);
+  const state = states.find((item) => item.id === run.stateId);
+  const environment = environments.find((item) => item.id === run.environmentId);
+  if (!state) throw new Error("State not found");
+  if (!environment) throw new Error("Environment not found");
 
-    run = {
-      id: nanoid(12),
-      name: config.name || `Run ${new Date().toLocaleString()}`,
-      stateId: state.id,
-      stateName: state.name,
-      environmentId: environment.id,
-      environmentName: environment.name,
-      mode: config.mode === "parallel" ? "parallel" : "serial",
-      promptRuns: config.promptRuns,
-      status: "running",
-      startedAt: timestamp(),
-      endedAt: null,
-      sessions: [],
-      createdAt: timestamp(),
-      updatedAt: timestamp()
-    };
-    store.runs.unshift(run);
-    return run;
-  });
+  const jobs = createExecutionPlan({
+    mode: run.mode,
+    runId: run.id,
+    initialWorkspace: state.path,
+    promptRuns: run.promptRuns,
+    prompts,
+    outputWorkspaceFor: ({ outputLabel }) => path.join(RUNS_DIR, run.id, outputLabel, "workspace")
+  }).map((job) => ({ ...job, run, environment, state }));
 
-  queueMicrotask(async () => {
-    const stored = await mutateStore((store) => store);
-    const state = stored.states.find((item) => item.id === config.stateId);
-    const environment = stored.environments.find((item) => item.id === config.environmentId);
-    const jobs = createExecutionPlan({
-      mode: run.mode,
-      runId: run.id,
-      initialWorkspace: state.path,
-      promptRuns: config.promptRuns,
-      prompts: stored.prompts,
-      outputWorkspaceFor: ({ outputLabel }) => path.join(RUNS_DIR, run.id, outputLabel, "workspace")
-    }).map((job) => ({ ...job, run, environment, state }));
-
-    try {
-      if (run.mode === "parallel") {
-        await Promise.all(jobs.map((job) => runSession(job)));
-      } else {
-        for (const job of jobs) await runSession(job);
-      }
-      await patchRun(run.id, (storedRun) => {
-        const failed = storedRun.sessions.some((session) => session.status === "failed");
-        storedRun.status = failed ? "failed" : "completed";
-        storedRun.endedAt = timestamp();
-      });
-      emit(run.id, null, "run_finished", { status: "done" });
-    } catch (error) {
-      await patchRun(run.id, (storedRun) => {
-        storedRun.status = "failed";
-        storedRun.endedAt = timestamp();
-      });
-      emit(run.id, null, "run_failed", error.stack || error.message);
+  try {
+    if (run.mode === "parallel") {
+      await Promise.all(jobs.map((job) => runSession(job)));
+    } else {
+      for (const job of jobs) await runSession(job);
     }
-  });
+    await patchRun(run.id, (storedRun) => {
+      const failed = storedRun.sessions.some((session) => session.status === "failed");
+      storedRun.status = failed ? "failed" : "completed";
+      storedRun.endedAt = timestamp();
+    });
+    await emit(run.id, null, "run_finished", { status: "done" });
+  } catch (error) {
+    await patchRun(run.id, (storedRun) => {
+      storedRun.status = "failed";
+      storedRun.endedAt = timestamp();
+    });
+    await emit(run.id, null, "run_failed", error.stack || error.message);
+    throw error;
+  }
+}
+
+export async function startRun(config) {
+  const [states, environments, storedPrompts] = await Promise.all([
+    listCollection("states"),
+    listCollection("environments"),
+    listCollection("prompts")
+  ]);
+  const state = states.find((item) => item.id === config.stateId);
+  const environment = environments.find((item) => item.id === config.environmentId);
+  const prompts = config.promptRuns
+    .map((selection) => {
+      const prompt = storedPrompts.find((item) => item.id === selection.promptId);
+      return prompt ? { ...selection, prompt } : null;
+    })
+    .filter(Boolean);
+
+  if (!state) throw new Error("State not found");
+  if (!environment) throw new Error("Environment not found");
+  if (!prompts.length) throw new Error("Select at least one prompt");
+
+  const run = {
+    id: nanoid(12),
+    name: config.name || `Run ${new Date().toLocaleString()}`,
+    stateId: state.id,
+    stateName: state.name,
+    environmentId: environment.id,
+    environmentName: environment.name,
+    mode: config.mode === "parallel" ? "parallel" : "serial",
+    promptRuns: config.promptRuns,
+    status: "running",
+    startedAt: timestamp(),
+    endedAt: null,
+    sessions: [],
+    createdAt: timestamp(),
+    updatedAt: timestamp()
+  };
+
+  await createRun(run);
+
+  try {
+    await enqueueRunJob({ runId: run.id }, { processor: processRunJob });
+  } catch (error) {
+    await patchRun(run.id, (storedRun) => {
+      storedRun.status = "failed";
+      storedRun.endedAt = timestamp();
+      storedRun.enqueueError = error.message;
+    });
+    throw error;
+  }
 
   return run;
 }

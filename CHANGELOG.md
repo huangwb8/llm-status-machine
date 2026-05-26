@@ -6,6 +6,11 @@
 
 ### Added（新增）
 
+- 新增 Docker 多阶段构建、单容器文件存储 Compose 与完整 Postgres/Redis/API/worker Compose 栈，支持容器内健康检查和非 root 运行。
+- 新增 `STORAGE_DRIVER=file|postgres`、`QUEUE_DRIVER=inline|redis`、`EVENT_BUS=memory|redis`，并加入 Postgres migration、Redis/BullMQ run queue 与独立 worker 进程。
+- 新增 DockerHub 本地直推脚本与 Makefile 入口，支持 `DRY_RUN`、`PUSH=0`、`FORCE`、`SKIP_TESTS`、`ALLOW_DIRTY` 和 amd64/arm64/multiarch profile。
+- 新增外部 `node_modules` 托管脚本，可将依赖软链接到 `/Volumes/2T01/Test/llm-status-machine/node_modules` 并复用 npm cache。
+- 新增 storage、queue、runner 回归测试，覆盖文件存储 CRUD、inline queue 异步语义、Dry Run session、跨进程 artifact 写入。
 - 明确项目目标与产品计划，补充 `docs/plans/initial-product-plan.md`。
 - 增强 session transcript、stdout/stderr、artifact 与运行中 AI 客户端可调用的本地 API。
 - 前端新增 transcript 与 artifact 查看区域，方便复盘模型行为。
@@ -15,8 +20,15 @@
 
 ### Changed（变更）
 
+- Docker Compose 的 workspace bind mount 默认改为读写，并新增 `WORKSPACES_TARGET` 与 `WORKSPACES_MOUNT_MODE` 配置；同时让 compose 使用 `.env` 中的 `DEFAULT_STATE_PATH`，便于真实本地项目作为可写工作区接入。
 - 内部 session 工作区的 Git 快照统一固定在 `main` 分支，并在前端 session 详情与 metadata/env 中明确记录分支，减少多分支/多批次理解成本。
 - 串行实验现在会把每轮输出工作区保存为 `state-N`，并将上一轮输出作为下一轮输入；并行实验仍从初始 Workspace 独立复制。
+
+### Fixed（修复）
+
+- 修复跨进程 artifact 写入的路径校验与 session 归属校验，避免伪造 run/session 时写入非 session artifact 目录。
+- 修复 Postgres 模式下 run/session/event 使用整库快照写入导致的并发覆盖风险，改为按 run/session/event 行级更新和 append。
+- 修复 Prompts 编辑时会被后台自动刷新覆盖的问题，并在删除 prompt 后同步清理 Experiment 中的对应选择。
 
 ## [1.0.0] - 2026-05-25
 

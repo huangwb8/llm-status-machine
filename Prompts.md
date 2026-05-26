@@ -2,6 +2,16 @@
 
 # 日常
 
+---
+
+基于 docs/plans/2026-05-26-docker-postgres-redis-worker-plan.md 优化源代码。使用 awesome-code skill 辅助规划、优化。所有问题都要解决。 如果工作时有疑问，或者有更好的方案，自己选个最优方案优化，不要问我。不要破坏其它已经存在的功能。要保证最终成品能正常、稳定、高效地工作。
+
+---
+
+我希望可以docker化应用； 而且，我希望支持postgres、redis，甚至必要时可以支持worker（如果你觉得确实需要）。我还希望像 /Volumes/2T01/Github/sub2api 一样支持本地直接将docker镜像推送至 dockerhub。 另外，如果用到npm module，可以托管在 /Volumes/2T01/Test/llm-status-machine 里； 而本仓库只是软链接过去。 请你调查源代码后，根据上述需要准备一个优化计划。
+
+---
+
 重构软件：
 
 - prompts（命名为Prompts）、llm环境（命名为Models）、工作空间（命名为Workspace）、baseurl/API（可以命名为DevTools）应该作为一个独立的界面

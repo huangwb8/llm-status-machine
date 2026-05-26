@@ -26,6 +26,68 @@ Open the Vite URL shown in the terminal, usually `http://localhost:5173`.
 
 The API listens on `http://localhost:4317`.
 
+To keep dependencies outside the repository on this machine:
+
+```bash
+npm run deps:link
+npm ci --cache /Volumes/2T01/Test/llm-status-machine/.npm-cache
+```
+
+If `node_modules` is already a local directory, rerun with `MIGRATE=1 npm run deps:link` to move it into `/Volumes/2T01/Test/llm-status-machine/node_modules` and replace it with a symlink.
+
+## Docker
+
+Build the local image:
+
+```bash
+docker build -t llm-status-machine:local .
+```
+
+Run the single-container file-storage profile:
+
+```bash
+docker compose -f docker-compose.file.yml up --build
+curl http://localhost:4317/api/health
+```
+
+Run the full stack with Postgres, Redis, API, and worker:
+
+```bash
+cp .env.example .env
+docker compose up --build
+curl http://localhost:4317/api/health
+```
+
+The full stack uses:
+
+- `STORAGE_DRIVER=postgres`
+- `QUEUE_DRIVER=redis`
+- `EVENT_BUS=redis`
+- `DATABASE_URL=postgres://...`
+- `REDIS_URL=redis://...`
+
+The app and worker share `/app/data` for run files. Workspace state paths must use paths visible inside the container. By default `./examples` is mounted read-write at `/workspaces/examples`, so the bundled dry-run state uses `/workspaces/examples/buggy-js`. For real projects, set `WORKSPACES_MOUNT=/host/projects` and register states with container paths such as `/workspaces/examples/project-a`. Set `WORKSPACES_TARGET=/workspaces/github` if you prefer a different container path, and set `WORKSPACES_MOUNT_MODE=ro` only when the source folder should be read-only.
+
+Codex and Claude CLIs are not installed in the base image. Dry Run and custom commands work out of the box; real LLM clients require extending the image or mounting the CLI, credentials, and workspaces yourself.
+
+## Worker Mode
+
+Local development defaults to a single API process:
+
+```bash
+STORAGE_DRIVER=file QUEUE_DRIVER=inline EVENT_BUS=memory npm run start
+```
+
+For multi-process execution, run migrations once and start the API plus worker:
+
+```bash
+DATABASE_URL=postgres://... npm run db:migrate
+STORAGE_DRIVER=postgres QUEUE_DRIVER=redis EVENT_BUS=redis REDIS_URL=redis://localhost:6379 npm run start
+STORAGE_DRIVER=postgres QUEUE_DRIVER=redis EVENT_BUS=redis REDIS_URL=redis://localhost:6379 npm run worker
+```
+
+The Docker entrypoint runs the Postgres migration automatically when `STORAGE_DRIVER=postgres`; set `RUN_DB_MIGRATIONS=0` to disable that behavior.
+
 ## Command Templates
 
 Each environment has a shell command template. Supported placeholders:
@@ -117,7 +179,7 @@ curl -X POST http://localhost:4317/api/agent/events \
 
 ## Data Layout
 
-- `data/store.json`: prompts, environments, states, run metadata
+- `data/store.json`: prompts, environments, states, run metadata in file-storage mode
 - `data/runs/<run>/state-N/workspace`: isolated working copy for a session output state
 - `data/runs/<run>/state-N/diff.patch`: captured code changes
 - `data/runs/<run>/state-N/metadata.json`: prompt/environment/state/branch/source snapshot
@@ -125,4 +187,24 @@ curl -X POST http://localhost:4317/api/agent/events \
 - `data/runs/<run>/state-N/stdout.txt` and `stderr.txt`: raw process streams
 - `data/runs/<run>/state-N/artifacts`: optional extra files written by the client or API
 
-The original state folder is never modified by the runner.
+In Postgres mode, prompt/environment/state/run/session/event metadata is stored in Postgres. Session workspaces, diffs, transcripts, and artifacts still live under `data/runs` so large artifacts stay on the shared file volume.
+
+The runner copies each state folder into an isolated session workspace before executing a command. The original state folder is mounted read-write by default so custom commands and local tooling can access it naturally, but normal run diffs are still captured from the isolated session workspace.
+
+## DockerHub Publish
+
+The DockerHub publish path is intentionally local and explicit:
+
+```bash
+DRY_RUN=1 make dockerhub-publish
+PUSH=0 ALLOW_DIRTY=1 SKIP_TESTS=1 make dockerhub-publish
+```
+
+Defaults:
+
+- `IMAGE=huangwb8/llm-status-machine`
+- `VERSION=$(node -p "require('./package.json').version")`
+- `PROFILE=amd64`
+- `PUSH=1`
+
+Stable versions publish `x.y.z`, `latest`, `x.y`, and `x` tags. Prerelease versions publish only the full version tag. The script checks Docker buildx, Docker login, SemVer, tag collisions, and a clean worktree unless `ALLOW_DIRTY=1` is set.

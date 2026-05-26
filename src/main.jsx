@@ -622,10 +622,19 @@ function App() {
   const [events, setEvents] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const previousActivePromptRef = useRef("");
+  const previousActiveEnvRef = useRef("");
+  const previousActiveStateRef = useRef("");
 
   async function refresh() {
     const next = await api.get("/store");
+    const promptIds = new Set(next.prompts.map((prompt) => prompt.id));
     setStore(next);
+    setRunConfig((current) => {
+      const promptRuns = current.promptRuns.filter((item) => promptIds.has(item.promptId));
+      return promptRuns.length === current.promptRuns.length ? current : { ...current, promptRuns };
+    });
+    setActivePrompt((current) => (current && !promptIds.has(current) ? "" : current));
     if (!initializedRef.current) {
       initializedRef.current = true;
       setActiveEnv(next.environments[0]?.id || "");
@@ -657,16 +666,34 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (previousActiveEnvRef.current === activeEnv) return;
+    previousActiveEnvRef.current = activeEnv;
+    if (!activeEnv) {
+      setEnvDraft(blankEnv);
+      return;
+    }
     const env = store.environments.find((item) => item.id === activeEnv);
     if (env) setEnvDraft(env);
   }, [activeEnv, store.environments]);
 
   useEffect(() => {
+    if (previousActivePromptRef.current === activePrompt) return;
+    previousActivePromptRef.current = activePrompt;
+    if (!activePrompt) {
+      setPromptDraft(blankPrompt);
+      return;
+    }
     const prompt = store.prompts.find((item) => item.id === activePrompt);
     if (prompt) setPromptDraft(prompt);
   }, [activePrompt, store.prompts]);
 
   useEffect(() => {
+    if (previousActiveStateRef.current === activeState) return;
+    previousActiveStateRef.current = activeState;
+    if (!activeState) {
+      setStateDraft(blankState);
+      return;
+    }
     const state = store.states.find((item) => item.id === activeState);
     if (state) setStateDraft(state);
   }, [activeState, store.states]);
@@ -713,6 +740,15 @@ function App() {
     try {
       await api.delete(`/${collection}/${id}`);
       clear("");
+      if (collection === "prompts") {
+        setPromptDraft(blankPrompt);
+        setRunConfig((current) => ({
+          ...current,
+          promptRuns: current.promptRuns.filter((item) => item.promptId !== id)
+        }));
+      }
+      if (collection === "environments") setEnvDraft(blankEnv);
+      if (collection === "states") setStateDraft(blankState);
       await refresh();
     } catch (err) {
       setError(err.message);
