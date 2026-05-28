@@ -71,6 +71,7 @@ export function createSeed(root) {
         id: "state-buggy-js",
         name: "Buggy JS Fixture",
         path: defaultStatePath,
+        folders: [defaultStatePath],
         description: "Small local fixture for dry-run and CLI smoke tests.",
         createdAt: now(),
         updatedAt: now()

@@ -6,7 +6,7 @@
 
 - Prompt：可复用任务说明。每个 prompt 在实验中可以设置重复次数。
 - Model：LLM 客户端环境配置，包括客户端类型、模型名、base URL、命令模板、超时和环境变量。
-- Workspace：一次实验的初始工作状态，通常是一个本地项目目录。
+- Workspace：一次实验的初始工作状态，可以是一个本地项目目录，也可以包含多个本地目录。
 - Run：用户点击 Start 后创建的一批实验任务。
 - Session：Run 中的一次实际客户端调用。一个 prompt 重复 3 次会生成 3 个 session。
 - Artifact：运行中的客户端额外写入的产物，例如报告、JSON 结果或截图索引。
@@ -44,7 +44,7 @@ flowchart LR
 
 - 在 Prompts 中维护任务文本，例如代码审查、修复主要问题或生成报告。
 - 在 Models 中维护客户端执行环境，例如 `codex exec ...`、`claude -p ...` 或 `node {simulator} {promptFile}`。
-- 在 Workspace 中登记本地目录。目录可以手动输入，也可以通过本地目录选择器添加。
+- 在 Workspace 中登记一个或多个本地目录。目录可以手动输入，也可以通过本地目录选择器逐个添加。
 
 这些配置通过 `/api/prompts`、`/api/environments` 和 `/api/states` 写入存储层。默认文件存储模式会写入 `data/store.json`；Postgres 模式会把元数据写入数据库。
 
@@ -118,7 +118,7 @@ sequenceDiagram
   participant Events as 事件流
 
   Runner->>FS: 创建 state-N 目录、workspace、artifacts
-  Runner->>FS: 复制输入 Workspace 到隔离 workspace
+  Runner->>FS: 复制输入 Workspace 到隔离 workspace，多目录状态复制为同级子目录
   Runner->>Git: 初始化 main 分支并提交 Initial state
   Runner->>FS: 写入 prompt.txt
   Runner->>Runner: 渲染 commandTemplate
@@ -246,7 +246,7 @@ X-Devtools-Key: <raw key>
 
 Raw key 只在创建时返回一次；存储层只保存 SHA-256 hash、key prefix 和撤销时间。外部工具可以通过 `/api/devtools/connect` 建立连接，通过 `/api/devtools/heartbeat` 更新 `lastSeenAt` 并接收终止信号，通过 `/api/devtools/disconnect` 标记断开。
 
-`GET /api/devtools/context` 会聚合 prompts、models、workspaces 和 runs。models 来源于 environments，但只暴露 `id`、`name`、`client`、`model`、`baseUrlConfigured`、`reasoningEffort` 和 `timeoutMs`，不会返回 `envVars` 值。
+`GET /api/devtools/context` 会聚合 prompts、models、workspaces 和 runs。models 来源于 environments，但只暴露 `id`、`name`、`client`、`model`、`baseUrlConfigured`、`reasoningEffort` 和 `timeoutMs`，不会返回 `envVars` 值。workspaces 会返回兼容字段 `path` 和多目录字段 `folders`，方便外部工具识别初始状态的所有本地目录。
 
 ## 存储与部署模式
 

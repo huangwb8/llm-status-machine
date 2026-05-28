@@ -61,3 +61,23 @@ test("inline runner completes a dry-run session and records workspace diff", asy
   );
   await assert.rejects(fs.access(escapedPath));
 });
+
+test("copyWorkspace copies multiple source folders into one isolated workspace", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "llm-status-multi-workspace-"));
+  const first = path.join(root, "project-a");
+  const second = path.join(root, "project-b");
+  const target = path.join(root, "target");
+  await fs.mkdir(first);
+  await fs.mkdir(second);
+  await fs.writeFile(path.join(first, "a.txt"), "alpha");
+  await fs.writeFile(path.join(second, "b.txt"), "beta");
+  await fs.mkdir(path.join(first, ".git"));
+  await fs.writeFile(path.join(first, ".git", "config"), "ignored");
+
+  const { copyWorkspace } = await import("../server/runner.js");
+  await copyWorkspace([first, second], target);
+
+  assert.equal(await fs.readFile(path.join(target, "project-a", "a.txt"), "utf8"), "alpha");
+  assert.equal(await fs.readFile(path.join(target, "project-b", "b.txt"), "utf8"), "beta");
+  await assert.rejects(fs.access(path.join(target, "project-a", ".git", "config")));
+});

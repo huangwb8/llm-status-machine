@@ -761,7 +761,35 @@ button { cursor: pointer; }
   display: grid;
   grid-template-columns: minmax(0, 1fr) 38px;
   gap: 8px;
+  align-items: start;
+}
+
+.pathPicker .iconButton {
+  margin-top: 1px;
+}
+
+.folderList {
+  display: grid;
+  gap: 6px;
+}
+
+.folderItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 8px;
   align-items: center;
+  padding: 6px 6px 6px 9px;
+  border: 1px solid var(--rule);
+  background: var(--paper-2);
+}
+
+.folderItem code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ink-soft);
 }
 
 .fieldHint {
@@ -777,13 +805,6 @@ button { cursor: pointer; }
   padding: 6px 8px;
   background: var(--amber-soft);
   color: var(--ink-2);
-}
-
-.workspaceActions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  padding-bottom: 2px;
 }
 
 .select {

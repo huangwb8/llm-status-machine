@@ -20,12 +20,15 @@
 - 新增实验编排测试，覆盖串行链式输入与并行独立输入两种模式。
 - Workspace 表单新增本机目录选择按钮，通过本地 API 调起系统目录选择器并自动填入路径。
 - Workspace 页面新增一键添加本地文件夹入口，选中目录后会校验路径并自动创建 workspace。
+- Workspace state 新增多文件夹支持，允许一个实验初始状态同时包含多个本地目录。
 - 新增 DevTools API Key、外部连接生命周期与只读上下文 API，供外部 Agent 受控读取实验上下文。
 - 新增 `/api/devtools/*` 外部 Agent API，支持 API Key 鉴权、连接心跳、run 启动、session 读取以及事件/artifact 写入。
 - 新增工程规则：源代码变更后必须重新构建并部署 Docker 镜像供用户审查。
 
 ### Changed（变更）
 
+- Workspace 页面移除顶部 `Add Local Folder` 快捷按钮，保留表单内目录选择按钮与 `Save Workspace` 作为唯一添加流程，减少重复入口造成的困惑。
+- Runner 复制 Workspace 时兼容单目录与多目录状态；多目录会在隔离 workspace 中以同级子目录形式呈现，并继续保留 `path` 字段兼容旧数据。
 - Docker 相关部署文件集中到 `deploy/`：移动 Dockerfile、Compose 文件与 DockerHub 发布脚本，并保留根目录 `.dockerignore` 作为 build context 规则。
 - Docker Compose 的 workspace bind mount 默认改为读写，并新增 `WORKSPACES_TARGET` 与 `WORKSPACES_MOUNT_MODE` 配置；同时让 compose 使用 `.env` 中的 `DEFAULT_STATE_PATH`，便于真实本地项目作为可写工作区接入。
 - 内部 session 工作区的 Git 快照统一固定在 `main` 分支，并在前端 session 详情与 metadata/env 中明确记录分支，减少多分支/多批次理解成本。

@@ -6,7 +6,7 @@ A local experiment console for running prompts against LLM coding clients and pr
 
 - Manage reusable prompts.
 - Manage LLM environments as Models, including Codex CLI, Claude Code, or any custom command.
-- Register Workspace states as local folders.
+- Register Workspace states as one or more local folders.
 - Use the Experiment bench to connect Prompts, Models, and Workspace into repeatable runs.
 - Run selected prompts once or many times in serial or parallel mode.
 - In serial mode, copy `state-i` into an isolated workspace, run one prompt attempt, then use that output as `state-i+1` for the next attempt.
@@ -148,6 +148,7 @@ GET    /api/states
 POST   /api/states
 PATCH  /api/states/:id
 DELETE /api/states/:id
+POST   /api/states/from-directory
 
 GET    /api/runs
 POST   /api/runs
@@ -199,6 +200,8 @@ Directory picker status returns the API host capability without opening a dialog
 
 `POST /api/system/select-directory` returns `403` when the browser session is not allowed to trigger host dialogs. When the native picker is unavailable it returns `409` with `{ "error": "...", "picker": { ... } }`; callers should keep the manual Workspace path flow available.
 
+Workspace state keeps `path` as a compatibility field for the first folder. New state data can also include `folders`, an array of absolute directory paths. `POST /api/states`, `PATCH /api/states/:id`, and `POST /api/states/from-directory` validate that every folder exists and is a directory.
+
 DevTools smoke test:
 
 ```bash
@@ -245,7 +248,7 @@ curl -X POST http://localhost:4317/api/agent/events \
 
 In Postgres mode, prompt/environment/state/run/session/event metadata is stored in Postgres. Session workspaces, diffs, transcripts, and artifacts still live under `data/runs` so large artifacts stay on the shared file volume.
 
-The runner copies each state folder into an isolated session workspace before executing a command. The original state folder is mounted read-write by default so custom commands and local tooling can access it naturally, but normal run diffs are still captured from the isolated session workspace.
+The runner copies each state into an isolated session workspace before executing a command. Single-folder states are copied as the workspace root. Multi-folder states are copied as sibling folders named after each source directory, so the client sees one isolated workspace containing all selected roots. Original state folders are mounted read-write by default so custom commands and local tooling can access them naturally, but normal run diffs are still captured from the isolated session workspace.
 
 ## DockerHub Publish
 

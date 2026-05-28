@@ -18,6 +18,7 @@ import { SNAPSHOT_BRANCH, changedFiles, commitSnapshot, diffPatch, diffStat, ini
 import { createExecutionPlan } from "./experimentPlan.js";
 import { emit, subscribe } from "./events.js";
 import { enqueueRunJob } from "./queue.js";
+import { workspaceFoldersFromState } from "./workspaceStates.js";
 
 const serverDir = path.dirname(new URL(import.meta.url).pathname);
 const simulatorPath = path.join(serverDir, "simulator.js");
@@ -65,13 +66,39 @@ async function resolveSessionPaths(runId, sessionId) {
   return getSessionPaths(path.dirname(stored.session.workspace));
 }
 
-async function copyWorkspace(source, target) {
+function uniqueFolderName(usedNames, sourcePath) {
+  const baseName = path.basename(path.resolve(sourcePath)) || "workspace";
+  let name = baseName;
+  let suffix = 2;
+  while (usedNames.has(name)) {
+    name = `${baseName}-${suffix}`;
+    suffix += 1;
+  }
+  usedNames.add(name);
+  return name;
+}
+
+export async function copyWorkspace(source, target) {
   await fs.mkdir(target, { recursive: true });
-  await fs.cp(source, target, {
-    recursive: true,
-    force: true,
-    filter: (item) => !item.includes(`${path.sep}.git${path.sep}`) && !item.endsWith(`${path.sep}.git`)
-  });
+  const sources = Array.isArray(source) ? source.filter(Boolean) : [source];
+  if (sources.length <= 1) {
+    await fs.cp(sources[0], target, {
+      recursive: true,
+      force: true,
+      filter: (item) => !item.includes(`${path.sep}.git${path.sep}`) && !item.endsWith(`${path.sep}.git`)
+    });
+    return;
+  }
+
+  const usedNames = new Set();
+  for (const sourcePath of sources) {
+    const destination = path.join(target, uniqueFolderName(usedNames, sourcePath));
+    await fs.cp(sourcePath, destination, {
+      recursive: true,
+      force: true,
+      filter: (item) => !item.includes(`${path.sep}.git${path.sep}`) && !item.endsWith(`${path.sep}.git`)
+    });
+  }
 }
 
 function shellEscape(value) {
@@ -289,7 +316,7 @@ export async function processRunJob({ runId }) {
   const jobs = createExecutionPlan({
     mode: run.mode,
     runId: run.id,
-    initialWorkspace: state.path,
+    initialWorkspace: workspaceFoldersFromState(state),
     promptRuns: run.promptRuns,
     prompts,
     outputWorkspaceFor: ({ outputLabel }) => path.join(RUNS_DIR, run.id, outputLabel, "workspace")

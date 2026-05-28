@@ -15,7 +15,7 @@ import { recordAgentEvent, startRun, subscribe, writeAgentArtifact } from "./run
 import { createConnection, disconnectConnection, heartbeatConnection, requestTerminateConnection } from "./devtoolsConnections.js";
 import { createDevtoolsKey, requireDevtoolsKey, revokeDevtoolsKey } from "./devtoolsAuth.js";
 import { getDirectoryPickerStatus, selectDirectory } from "./systemDialog.js";
-import { createStateFromDirectory } from "./workspaceStates.js";
+import { createStateFromDirectory, normalizeWorkspaceState, workspaceFoldersFromState } from "./workspaceStates.js";
 import { isDirectoryPickerRequestAllowed } from "./localRequest.js";
 
 const port = process.env.PORT || 4317;
@@ -95,6 +95,7 @@ function publicDevtoolsContext(store) {
       id: state.id,
       name: state.name,
       path: state.path,
+      folders: workspaceFoldersFromState(state),
       description: state.description
     })),
     runs: store.runs
@@ -120,11 +121,15 @@ export function createApp({
     }));
 
     app.post(`/api/${collection}`, asyncRoute(async (req, res) => {
-      res.status(201).json(await createItem(collection, req.body));
+      const body = collection === "states" ? await normalizeWorkspaceState(req.body) : req.body;
+      res.status(201).json(await createItem(collection, body));
     }));
 
     app.patch(`/api/${collection}/:id`, asyncRoute(async (req, res) => {
-      const item = await updateItem(collection, req.params.id, req.body);
+      const existing = collection === "states" ? await getItem(collection, req.params.id) : null;
+      if (collection === "states" && !existing) return res.status(404).json({ error: "Not found" });
+      const body = collection === "states" ? await normalizeWorkspaceState(req.body, existing || {}) : req.body;
+      const item = await updateItem(collection, req.params.id, body);
       if (!item) return res.status(404).json({ error: "Not found" });
       res.json(item);
     }));
@@ -201,7 +206,13 @@ export function createApp({
 
   app.get("/api/devtools/workspaces", requireDevtools, asyncRoute(async (_req, res) => {
     const states = await listCollection("states");
-    res.json(states.map((state) => ({ id: state.id, name: state.name, path: state.path, description: state.description })));
+    res.json(states.map((state) => ({
+      id: state.id,
+      name: state.name,
+      path: state.path,
+      folders: workspaceFoldersFromState(state),
+      description: state.description
+    })));
   }));
 
   app.get("/api/devtools/runs", requireDevtools, asyncRoute(async (_req, res) => {
@@ -312,6 +323,7 @@ export function createApp({
   app.post("/api/states/from-directory", asyncRoute(async (req, res) => {
     const item = await createStateFromDirectory({
       folderPath: req.body?.path,
+      folderPaths: req.body?.folders,
       name: req.body?.name,
       description: req.body?.description,
       createItem

@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { createStateFromDirectory, workspaceNameFromPath } from "../server/workspaceStates.js";
+import { createStateFromDirectory, normalizeWorkspaceState, workspaceNameFromPath } from "../server/workspaceStates.js";
 
 test("workspaceNameFromPath derives the directory basename", () => {
   assert.equal(workspaceNameFromPath("/tmp/example-project/"), "example-project");
@@ -24,6 +24,22 @@ test("createStateFromDirectory validates and creates a workspace state", async (
   assert.equal(created[0].collection, "states");
   assert.equal(item.name, path.basename(root));
   assert.equal(item.path, root);
+  assert.deepEqual(item.folders, [root]);
+});
+
+test("normalizeWorkspaceState accepts multiple workspace folders", async () => {
+  const first = await fs.mkdtemp(path.join(os.tmpdir(), "workspace-state-a-"));
+  const second = await fs.mkdtemp(path.join(os.tmpdir(), "workspace-state-b-"));
+
+  const state = await normalizeWorkspaceState({
+    folders: [first, second],
+    description: "  multi root  "
+  });
+
+  assert.equal(state.name, `${path.basename(first)} + 1`);
+  assert.equal(state.path, first);
+  assert.deepEqual(state.folders, [first, second]);
+  assert.equal(state.description, "multi root");
 });
 
 test("createStateFromDirectory rejects non-directories", async () => {

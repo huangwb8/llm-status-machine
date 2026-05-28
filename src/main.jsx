@@ -84,7 +84,7 @@ const blankEnv = {
   envVars: {},
   timeoutMs: 600000
 };
-const blankState = { name: "", path: "", description: "" };
+const blankState = { name: "", path: "", folders: [], description: "" };
 
 const views = [
   { id: "experiment", label: "Experiment", icon: Activity },
@@ -122,6 +122,20 @@ function folderNameFromPath(folderPath) {
     .split(/[\\/]/)
     .filter(Boolean)
     .pop() || "";
+}
+
+function normalizeDraftFolders(draft) {
+  const folders = Array.isArray(draft?.folders) ? draft.folders : [];
+  return [...folders, draft?.path]
+    .map((folder) => String(folder || "").trim())
+    .filter(Boolean)
+    .filter((folder, index, all) => all.indexOf(folder) === index);
+}
+
+function updateDraftFolders(draft, folders) {
+  const normalized = folders.map((folder) => String(folder || "").trim()).filter(Boolean);
+  const uniqueFolders = normalized.filter((folder, index) => normalized.indexOf(folder) === index);
+  return { ...draft, folders: uniqueFolders, path: uniqueFolders[0] || "" };
 }
 
 function StatusPill({ status }) {
@@ -548,12 +562,12 @@ function WorkspaceView({
   remove,
   busy,
   directoryPicker,
-  pickWorkspaceFolder,
-  createWorkspaceFromFolder
+  pickWorkspaceFolder
 }) {
   const [selectingFolder, setSelectingFolder] = useState(false);
   const folderInputRef = useRef(null);
   const pickerAvailable = directoryPicker?.available !== false;
+  const folders = normalizeDraftFolders(stateDraft);
 
   function focusFolderInput() {
     if (activeState) {
@@ -573,56 +587,27 @@ function WorkspaceView({
     try {
       const selectedPath = await pickWorkspaceFolder();
       if (selectedPath) {
-        setStateDraft({
-          ...stateDraft,
-          name: stateDraft.name || folderNameFromPath(selectedPath),
-          path: selectedPath
-        });
+        const nextFolders = [...folders, selectedPath];
+        setStateDraft(updateDraftFolders(
+          {
+            ...stateDraft,
+            name: stateDraft.name || folderNameFromPath(selectedPath)
+          },
+          nextFolders
+        ));
       }
     } finally {
       setSelectingFolder(false);
     }
   }
 
-  async function addLocalFolder() {
-    if (!pickerAvailable) {
-      const selectedPath = String(stateDraft.path || "").trim();
-      if (activeState || !selectedPath) {
-        focusFolderInput();
-        return;
-      }
+  function setFoldersFromText(value) {
+    const nextFolders = value.split("\n");
+    setStateDraft(updateDraftFolders(stateDraft, nextFolders));
+  }
 
-      setSelectingFolder(true);
-      try {
-        const item = await createWorkspaceFromFolder({
-          path: selectedPath,
-          name: stateDraft.name,
-          description: stateDraft.description
-        });
-        if (item) {
-          setActiveState(item.id);
-          setStateDraft(item);
-        }
-      } finally {
-        setSelectingFolder(false);
-      }
-      return;
-    }
-
-    setSelectingFolder(true);
-    try {
-      const item = await createWorkspaceFromFolder({
-        path: activeState ? "" : stateDraft.path,
-        name: stateDraft.name,
-        description: stateDraft.description
-      });
-      if (item) {
-        setActiveState(item.id);
-        setStateDraft(item);
-      }
-    } finally {
-      setSelectingFolder(false);
-    }
+  function removeFolder(folderPath) {
+    setStateDraft(updateDraftFolders(stateDraft, folders.filter((folder) => folder !== folderPath)));
   }
 
   return (
@@ -639,33 +624,40 @@ function WorkspaceView({
       }}
       onDelete={(id) => remove("states", id, setActiveState)}
     >
-      <div className="workspaceActions">
-        <button className="secondary mini" disabled={busy || selectingFolder} onClick={addLocalFolder}>
-          {selectingFolder ? <Loader2 className="spin" size={16} /> : <FolderOpen size={16} />}
-          Add Local Folder
-        </button>
-      </div>
       <Field label="Name">
         <TextInput value={stateDraft.name} onChange={(event) => setStateDraft({ ...stateDraft, name: event.target.value })} />
       </Field>
-      <Field label="Folder">
+      <Field label="Folders">
         <div className="pathPicker">
-          <TextInput
+          <TextArea
             ref={folderInputRef}
+            rows={Math.max(3, Math.min(6, folders.length || 3))}
             placeholder="/absolute/path/to/workspace"
-            value={stateDraft.path}
-            onChange={(event) => setStateDraft({ ...stateDraft, path: event.target.value })}
+            value={folders.join("\n")}
+            onChange={(event) => setFoldersFromText(event.target.value)}
           />
           <IconButton title="Choose folder" disabled={busy || selectingFolder || !pickerAvailable} onClick={pickFolder}>
             {selectingFolder ? <Loader2 className="spin" size={17} /> : <FolderOpen size={17} />}
           </IconButton>
         </div>
         {!pickerAvailable && <p className="fieldHint warning">{directoryPicker.message}</p>}
+        {folders.length > 1 && (
+          <div className="folderList">
+            {folders.map((folder) => (
+              <div key={folder} className="folderItem">
+                <code>{folder}</code>
+                <IconButton title="Remove folder" disabled={busy} onClick={() => removeFolder(folder)}>
+                  <Trash2 size={15} />
+                </IconButton>
+              </div>
+            ))}
+          </div>
+        )}
       </Field>
       <Field label="Notes">
         <TextArea rows={5} value={stateDraft.description} onChange={(event) => setStateDraft({ ...stateDraft, description: event.target.value })} />
       </Field>
-      <button className="primary mini" disabled={busy || !stateDraft.name || !stateDraft.path} onClick={() => save("states", activeState, stateDraft, setActiveState)}>
+      <button className="primary mini" disabled={busy || !stateDraft.name || !folders.length} onClick={() => save("states", activeState, updateDraftFolders(stateDraft, folders), setActiveState)}>
         <Database size={16} />
         Save Workspace
       </button>
@@ -1061,33 +1053,6 @@ function App() {
     }
   }
 
-  async function createWorkspaceFromFolder({ path: folderPath, name, description } = {}) {
-    setBusy(true);
-    setError("");
-    try {
-      let selectedPath = String(folderPath || "").trim();
-      if (!selectedPath) {
-        if (directoryPicker.available === false) {
-          setError(directoryPicker.message);
-          return null;
-        }
-
-        const result = await api.post("/system/select-directory", { title: "Add local workspace folder" });
-        selectedPath = result.path || "";
-      }
-      if (!selectedPath) return null;
-      const item = await api.post("/states/from-directory", { path: selectedPath, name, description });
-      await refresh();
-      return item;
-    } catch (err) {
-      if (applyDirectoryPickerUnavailable(err)) return null;
-      setError(err.message);
-      return null;
-    } finally {
-      setBusy(false);
-    }
-  }
-
   const running = store.runs.some((run) => run.status === "running");
   const activeViewMeta = views.find((view) => view.id === activeView);
 
@@ -1181,7 +1146,6 @@ function App() {
             busy={busy}
             directoryPicker={directoryPicker}
             pickWorkspaceFolder={pickWorkspaceFolder}
-            createWorkspaceFromFolder={createWorkspaceFromFolder}
           />
         )}
         {activeView === "devtools" && (
