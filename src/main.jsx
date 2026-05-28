@@ -35,7 +35,10 @@ const api = {
     const text = await response.text();
     try {
       const payload = JSON.parse(text);
-      throw new Error(payload.error || text);
+      const apiError = new Error(payload.error || text);
+      apiError.status = response.status;
+      apiError.payload = payload;
+      throw apiError;
     } catch (error) {
       if (error instanceof SyntaxError) throw new Error(text || response.statusText);
       throw error;
@@ -514,6 +517,9 @@ function ModelsView({ store, activeEnv, setActiveEnv, envDraft, setEnvDraft, sav
         <Field label="Model">
           <TextInput value={envDraft.model} onChange={(event) => setEnvDraft({ ...envDraft, model: event.target.value })} />
         </Field>
+        <Field label="Base URL">
+          <TextInput placeholder="https://api.example.com/v1" value={envDraft.baseUrl} onChange={(event) => setEnvDraft({ ...envDraft, baseUrl: event.target.value })} />
+        </Field>
         <Field label="Reasoning">
           <TextInput value={envDraft.reasoningEffort} onChange={(event) => setEnvDraft({ ...envDraft, reasoningEffort: event.target.value })} />
         </Field>
@@ -541,12 +547,28 @@ function WorkspaceView({
   save,
   remove,
   busy,
+  directoryPicker,
   pickWorkspaceFolder,
   createWorkspaceFromFolder
 }) {
   const [selectingFolder, setSelectingFolder] = useState(false);
+  const folderInputRef = useRef(null);
+  const pickerAvailable = directoryPicker?.available !== false;
+
+  function focusFolderInput() {
+    if (activeState) {
+      setActiveState("");
+      setStateDraft(blankState);
+    }
+    requestAnimationFrame(() => folderInputRef.current?.focus());
+  }
 
   async function pickFolder() {
+    if (!pickerAvailable) {
+      focusFolderInput();
+      return;
+    }
+
     setSelectingFolder(true);
     try {
       const selectedPath = await pickWorkspaceFolder();
@@ -563,6 +585,30 @@ function WorkspaceView({
   }
 
   async function addLocalFolder() {
+    if (!pickerAvailable) {
+      const selectedPath = String(stateDraft.path || "").trim();
+      if (activeState || !selectedPath) {
+        focusFolderInput();
+        return;
+      }
+
+      setSelectingFolder(true);
+      try {
+        const item = await createWorkspaceFromFolder({
+          path: selectedPath,
+          name: stateDraft.name,
+          description: stateDraft.description
+        });
+        if (item) {
+          setActiveState(item.id);
+          setStateDraft(item);
+        }
+      } finally {
+        setSelectingFolder(false);
+      }
+      return;
+    }
+
     setSelectingFolder(true);
     try {
       const item = await createWorkspaceFromFolder({
@@ -604,11 +650,17 @@ function WorkspaceView({
       </Field>
       <Field label="Folder">
         <div className="pathPicker">
-          <TextInput placeholder="/absolute/path/to/workspace" value={stateDraft.path} onChange={(event) => setStateDraft({ ...stateDraft, path: event.target.value })} />
-          <IconButton title="Choose folder" disabled={busy || selectingFolder} onClick={pickFolder}>
+          <TextInput
+            ref={folderInputRef}
+            placeholder="/absolute/path/to/workspace"
+            value={stateDraft.path}
+            onChange={(event) => setStateDraft({ ...stateDraft, path: event.target.value })}
+          />
+          <IconButton title="Choose folder" disabled={busy || selectingFolder || !pickerAvailable} onClick={pickFolder}>
             {selectingFolder ? <Loader2 className="spin" size={17} /> : <FolderOpen size={17} />}
           </IconButton>
         </div>
+        {!pickerAvailable && <p className="fieldHint warning">{directoryPicker.message}</p>}
       </Field>
       <Field label="Notes">
         <TextArea rows={5} value={stateDraft.description} onChange={(event) => setStateDraft({ ...stateDraft, description: event.target.value })} />
@@ -621,51 +673,174 @@ function WorkspaceView({
   );
 }
 
-function DevToolsView({ store, activeEnv, setActiveEnv, envDraft, setEnvDraft, save, events, busy }) {
+function DevToolsView({ events }) {
+  const [admin, setAdmin] = useState({ keys: [], connections: [] });
+  const [keyName, setKeyName] = useState("local-agent");
+  const [rawKey, setRawKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const externalBaseUrl = `${window.location.origin}/api/devtools`;
   const endpoints = [
-    "GET /api/store",
-    "POST /api/runs",
-    "GET /api/events",
-    "POST /api/agent/events",
-    "POST /api/agent/artifacts"
+    ["Ping", "GET /api/devtools/ping"],
+    ["Connection", "POST /api/devtools/connect"],
+    ["Connection", "POST /api/devtools/heartbeat"],
+    ["Connection", "POST /api/devtools/disconnect"],
+    ["Context", "GET /api/devtools/context"],
+    ["Runs", "POST /api/devtools/runs"],
+    ["Runs", "GET /api/devtools/runs/:id"],
+    ["Sessions", "GET /api/devtools/sessions/:id/transcript"],
+    ["Sessions", "GET /api/devtools/sessions/:id/diff"],
+    ["Sessions", "POST /api/devtools/sessions/:id/events"],
+    ["Sessions", "POST /api/devtools/sessions/:id/artifacts"]
   ];
+
+  async function refreshAdmin() {
+    const next = await api.get("/devtools/admin");
+    setAdmin(next);
+    return next;
+  }
+
+  useEffect(() => {
+    refreshAdmin().catch((err) => setError(err.message));
+  }, []);
+
+  async function createKey() {
+    setBusy(true);
+    setError("");
+    try {
+      const created = await api.post("/devtools/admin/keys", { name: keyName });
+      setRawKey(created.rawKey);
+      await refreshAdmin();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function revokeKey(id) {
+    setBusy(true);
+    setError("");
+    try {
+      await api.post(`/devtools/admin/keys/${id}/revoke`, {});
+      await refreshAdmin();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function terminateConnection(id) {
+    setBusy(true);
+    setError("");
+    try {
+      await api.post(`/devtools/admin/connections/${id}/terminate`, {});
+      await refreshAdmin();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copyText(value) {
+    await navigator.clipboard?.writeText(value);
+  }
 
   return (
     <div className="devtoolsGrid">
       <section className="panel">
-        <SectionHead eyebrow="Endpoint" title="Base URL" icon={Network} />
-        <Field label="Model">
-          <select
-            className="select"
-            value={activeEnv}
-            onChange={(event) => {
-              const env = store.environments.find((item) => item.id === event.target.value);
-              setActiveEnv(event.target.value);
-              setEnvDraft(env || blankEnv);
-            }}
-          >
-            <option value="">New model</option>
-            {store.environments.map((env) => (
-              <option key={env.id} value={env.id}>
-                {env.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Base URL">
-          <TextInput value={envDraft.baseUrl} onChange={(event) => setEnvDraft({ ...envDraft, baseUrl: event.target.value })} />
-        </Field>
-        <button className="primary mini" disabled={busy || !envDraft.name} onClick={() => save("environments", activeEnv, envDraft, setActiveEnv)}>
-          <ServerCog size={16} />
-          Save Base URL
-        </button>
+        <SectionHead eyebrow="External Agent API" title="DevTools" icon={Network} />
+        {error && <div className="inlineError">{error}</div>}
+        <div className="infoGrid">
+          <Field label="Base URL">
+            <div className="copyLine">
+              <code>{externalBaseUrl}</code>
+              <IconButton title="Copy base URL" onClick={() => copyText(externalBaseUrl)}>
+                <Check size={15} />
+              </IconButton>
+            </div>
+          </Field>
+          <Field label="Prefix">
+            <code className="codeBox">/api/devtools</code>
+          </Field>
+          <Field label="Auth Header">
+            <code className="codeBox">{admin.authHeader || "X-Devtools-Key"}</code>
+          </Field>
+        </div>
       </section>
 
       <section className="panel">
-        <SectionHead eyebrow="API" title="Local Surface" icon={Code2} />
+        <SectionHead eyebrow="Keys" title="API Access" icon={ServerCog} />
+        <div className="keyCreate">
+          <TextInput value={keyName} onChange={(event) => setKeyName(event.target.value)} />
+          <button className="primary mini" disabled={busy || !keyName.trim()} onClick={createKey}>
+            <Plus size={16} />
+            Generate Key
+          </button>
+        </div>
+        {rawKey && (
+          <div className="secretBox">
+            <code>{rawKey}</code>
+            <IconButton title="Copy key" onClick={() => copyText(rawKey)}>
+              <Check size={15} />
+            </IconButton>
+          </div>
+        )}
+        <div className="stackList">
+          {admin.keys.map((key) => (
+            <div key={key.id} className={cx("stackItem", key.revokedAt && "mutedItem")}>
+              <div>
+                <strong>{key.name}</strong>
+                <code>{key.keyPrefix}</code>
+              </div>
+              <div className="rowActions">
+                <StatusPill status={key.revokedAt ? "revoked" : "ready"} />
+                {!key.revokedAt && (
+                  <IconButton title="Revoke key" disabled={busy} onClick={() => revokeKey(key.id)}>
+                    <CircleStop size={15} />
+                  </IconButton>
+                )}
+              </div>
+            </div>
+          ))}
+          {!admin.keys.length && <div className="emptyLine">No keys</div>}
+        </div>
+      </section>
+
+      <section className="panel">
+        <SectionHead eyebrow="Connections" title="Live Agents" icon={Activity} />
+        <div className="stackList connectionList">
+          {admin.connections.map((connection) => (
+            <div key={connection.id} className={cx("stackItem", connection.terminatedAt && "mutedItem")}>
+              <div>
+                <strong>{connection.clientName || "external-agent"}</strong>
+                <span>{connection.clientVersion || connection.machine || "unknown"}</span>
+                <code>{connection.workdir || connection.id}</code>
+              </div>
+              <div className="rowActions">
+                <StatusPill status={connection.terminatedAt ? "done" : connection.terminateRequestedAt ? "stopping" : "running"} />
+                {!connection.terminatedAt && (
+                  <IconButton title="Request termination" disabled={busy} onClick={() => terminateConnection(connection.id)}>
+                    <CircleStop size={15} />
+                  </IconButton>
+                )}
+              </div>
+            </div>
+          ))}
+          {!admin.connections.length && <div className="emptyLine">No connections</div>}
+        </div>
+      </section>
+
+      <section className="panel">
+        <SectionHead eyebrow="Surface" title="Endpoints" icon={Code2} />
         <div className="apiList">
-          {endpoints.map((endpoint) => (
-            <code key={endpoint}>{endpoint}</code>
+          {endpoints.map(([group, endpoint]) => (
+            <code key={endpoint}>
+              <span>{group}</span>
+              {endpoint}
+            </code>
           ))}
         </div>
       </section>
@@ -673,7 +848,7 @@ function DevToolsView({ store, activeEnv, setActiveEnv, envDraft, setEnvDraft, s
       <section className="panel eventPanel">
         <div className="panelTitle">
           <Sparkles size={18} />
-          <h2>Events</h2>
+          <h2>Run Events</h2>
         </div>
         <EventStream events={events} empty="Waiting" />
       </section>
@@ -699,6 +874,7 @@ function App() {
   const [events, setEvents] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [directoryPicker, setDirectoryPicker] = useState({ available: true, message: "" });
   const previousActivePromptRef = useRef("");
   const previousActiveEnvRef = useRef("");
   const previousActiveStateRef = useRef("");
@@ -728,8 +904,22 @@ function App() {
     }
   }
 
+  async function refreshDirectoryPickerStatus() {
+    const picker = await api.get("/system/directory-picker");
+    setDirectoryPicker(picker);
+    return picker;
+  }
+
+  function applyDirectoryPickerUnavailable(err) {
+    if (err.status !== 409 || !err.payload?.picker) return false;
+    setDirectoryPicker(err.payload.picker);
+    setError(err.payload.picker.message || err.message);
+    return true;
+  }
+
   useEffect(() => {
     refresh().catch((err) => setError(err.message));
+    refreshDirectoryPickerStatus().catch(() => {});
     const timer = setInterval(() => refresh().catch(() => {}), 2500);
     const source = new EventSource("/api/events");
     source.onmessage = (event) => setEvents((current) => [JSON.parse(event.data), ...current].slice(0, 80));
@@ -856,10 +1046,16 @@ function App() {
 
   async function pickWorkspaceFolder() {
     setError("");
+    if (directoryPicker.available === false) {
+      setError(directoryPicker.message);
+      return "";
+    }
+
     try {
       const result = await api.post("/system/select-directory", { title: "Select workspace folder" });
       return result.path || "";
     } catch (err) {
+      if (applyDirectoryPickerUnavailable(err)) return "";
       setError(err.message);
       return "";
     }
@@ -871,6 +1067,11 @@ function App() {
     try {
       let selectedPath = String(folderPath || "").trim();
       if (!selectedPath) {
+        if (directoryPicker.available === false) {
+          setError(directoryPicker.message);
+          return null;
+        }
+
         const result = await api.post("/system/select-directory", { title: "Add local workspace folder" });
         selectedPath = result.path || "";
       }
@@ -879,6 +1080,7 @@ function App() {
       await refresh();
       return item;
     } catch (err) {
+      if (applyDirectoryPickerUnavailable(err)) return null;
       setError(err.message);
       return null;
     } finally {
@@ -977,21 +1179,13 @@ function App() {
             save={save}
             remove={remove}
             busy={busy}
+            directoryPicker={directoryPicker}
             pickWorkspaceFolder={pickWorkspaceFolder}
             createWorkspaceFromFolder={createWorkspaceFromFolder}
           />
         )}
         {activeView === "devtools" && (
-          <DevToolsView
-            store={store}
-            activeEnv={activeEnv}
-            setActiveEnv={setActiveEnv}
-            envDraft={envDraft}
-            setEnvDraft={setEnvDraft}
-            save={save}
-            events={events}
-            busy={busy}
-          />
+          <DevToolsView events={events} />
         )}
       </div>
     </main>

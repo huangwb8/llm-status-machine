@@ -24,6 +24,29 @@ test("file storage preserves collection CRUD and aggregate store shape", async (
   const aggregate = await store.readStore();
   assert.equal(aggregate.prompts.some((item) => item.id === "prompt-test"), true);
   assert.deepEqual(aggregate.runs, []);
+  assert.deepEqual(aggregate.devtoolsApiKeys, []);
+  assert.deepEqual(aggregate.devtoolsConnections, []);
+
+  const key = await store.createItem("devtoolsApiKeys", {
+    id: "key-test",
+    name: "Test key",
+    keyHash: "hash",
+    keyPrefix: "lsm_test"
+  });
+  assert.equal(key.id, "key-test");
+
+  const connection = await store.createItem("devtoolsConnections", {
+    id: "connection-test",
+    keyId: "key-test",
+    clientName: "codex"
+  });
+  assert.equal(connection.clientName, "codex");
+
+  const updatedConnection = await store.updateItem("devtoolsConnections", "connection-test", { lastError: "lost" });
+  assert.equal(updatedConnection.lastError, "lost");
+
+  assert.equal(await store.deleteItem("devtoolsApiKeys", "key-test"), true);
+  assert.equal(await store.getItem("devtoolsApiKeys", "key-test"), null);
 
   assert.equal(await store.deleteItem("prompts", "prompt-test"), true);
   assert.equal(await store.getItem("prompts", "prompt-test"), null);

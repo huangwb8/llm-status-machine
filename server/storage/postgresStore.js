@@ -1,7 +1,7 @@
 import { nanoid } from "nanoid";
 import { createSeed } from "./fileStore.js";
 
-const DOCUMENT_COLLECTIONS = ["prompts", "environments", "states"];
+const DOCUMENT_COLLECTIONS = ["prompts", "environments", "states", "devtoolsApiKeys", "devtoolsConnections"];
 const now = () => new Date().toISOString();
 
 function byUpdatedDesc(a, b) {
@@ -94,7 +94,7 @@ export function createPostgresStore({ connectionString = process.env.DATABASE_UR
   }
 
   async function readStore() {
-    const store = { prompts: [], environments: [], states: [], runs: [] };
+    const store = { prompts: [], environments: [], states: [], devtoolsApiKeys: [], devtoolsConnections: [], runs: [] };
     for (const collection of DOCUMENT_COLLECTIONS) {
       store[collection] = await readDocuments(collection);
     }

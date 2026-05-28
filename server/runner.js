@@ -345,6 +345,8 @@ export async function startRun(config) {
     environmentName: environment.name,
     mode: config.mode === "parallel" ? "parallel" : "serial",
     promptRuns: config.promptRuns,
+    source: config.source || "local",
+    devtools: config.devtools || null,
     status: "running",
     startedAt: timestamp(),
     endedAt: null,

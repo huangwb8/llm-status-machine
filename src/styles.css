@@ -708,7 +708,7 @@ button { cursor: pointer; }
 
 .formGrid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(130px, 1fr));
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
   gap: 12px;
 }
 
@@ -762,6 +762,21 @@ button { cursor: pointer; }
   grid-template-columns: minmax(0, 1fr) 38px;
   gap: 8px;
   align-items: center;
+}
+
+.fieldHint {
+  margin: 0;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.fieldHint.warning {
+  border-left: 3px solid var(--amber);
+  padding: 6px 8px;
+  background: var(--amber-soft);
+  color: var(--ink-2);
 }
 
 .workspaceActions {
@@ -1202,12 +1217,119 @@ button { cursor: pointer; }
 /* ----------------------------- DevTools ----------------------------- */
 
 .devtoolsGrid {
-  grid-template-columns: minmax(300px, 440px) minmax(280px, 1fr);
+  grid-template-columns: minmax(320px, 0.9fr) minmax(360px, 1.1fr);
   align-items: start;
   gap: 16px;
 }
 
-.devtoolsGrid .eventPanel { grid-column: 1 / -1; }
+.devtoolsGrid .eventPanel {
+  grid-area: auto;
+  grid-column: 1 / -1;
+}
+
+.infoGrid,
+.stackList {
+  display: grid;
+  gap: 10px;
+}
+
+.copyLine,
+.secretBox,
+.keyCreate,
+.stackItem,
+.rowActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.copyLine code,
+.secretBox code,
+.codeBox,
+.stackItem code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.copyLine code,
+.codeBox {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  padding: 10px 12px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+}
+
+.keyCreate {
+  align-items: stretch;
+}
+
+.keyCreate .input {
+  min-width: 0;
+}
+
+.secretBox {
+  justify-content: space-between;
+  border: 1px solid var(--cinnabar);
+  background: #f4ded8;
+  padding: 10px 12px;
+  margin: 12px 0;
+}
+
+.secretBox code {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  color: var(--cinnabar-ink);
+}
+
+.stackItem {
+  justify-content: space-between;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  padding: 10px 12px;
+}
+
+.stackItem > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.stackItem strong {
+  color: var(--ink);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.stackItem span,
+.stackItem code {
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+}
+
+.rowActions {
+  flex: 0 0 auto;
+}
+
+.mutedItem {
+  opacity: 0.62;
+}
+
+.inlineError {
+  border: 1px solid var(--cinnabar);
+  background: #f4ded8;
+  color: var(--cinnabar-ink);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
 
 .apiList {
   display: grid;
@@ -1216,6 +1338,8 @@ button { cursor: pointer; }
 
 .apiList code {
   display: block;
+  min-width: 0;
+  overflow-x: auto;
   border: 1px solid var(--ink);
   background: var(--paper);
   padding: 12px 14px;
@@ -1226,6 +1350,17 @@ button { cursor: pointer; }
   color: var(--ink);
   position: relative;
   padding-left: 38px;
+  white-space: nowrap;
+}
+
+.apiList code span {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--cinnabar);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .apiList code::before {

@@ -32,6 +32,12 @@ flowchart LR
   Store --> UI
 ```
 
+本项目有三类 HTTP API，边界不同：
+
+- Local UI API：`/api/prompts`、`/api/environments`、`/api/states`、`/api/runs` 等，由本地前端用于 CRUD、运行调度和结果读取。
+- Session Agent API：`/api/agent/events` 与 `/api/agent/artifacts`，由正在运行的 Codex、Claude Code 或自定义命令回写当前 run/session。
+- DevTools External Agent API：`/api/devtools/*`，由可信外部 AI/Agent 工具使用 `X-Devtools-Key` 连接、心跳、读取上下文、启动 run、查询结果并写入 session 事件或 artifact。
+
 ## 配置阶段
 
 用户通常先在界面中准备三类基础配置：
@@ -227,6 +233,20 @@ curl -X POST "$LLM_STATUS_MACHINE_API/api/agent/artifacts" \
 ```
 
 artifact 文件名会被清理为安全的 basename，写入当前 session 的 `artifacts/` 目录。
+
+## DevTools 外部入口
+
+DevTools 不是 LLM provider 或 base URL 配置页。模型客户端、base URL、命令模板和环境变量仍在 Models 中维护。DevTools 只负责给可信外部工具提供受控 API 入口。
+
+本地管理端点默认只允许本机请求，除非显式设置 `DEVTOOLS_ADMIN_ALLOW_REMOTE=1`。外部端点统一要求请求头：
+
+```text
+X-Devtools-Key: <raw key>
+```
+
+Raw key 只在创建时返回一次；存储层只保存 SHA-256 hash、key prefix 和撤销时间。外部工具可以通过 `/api/devtools/connect` 建立连接，通过 `/api/devtools/heartbeat` 更新 `lastSeenAt` 并接收终止信号，通过 `/api/devtools/disconnect` 标记断开。
+
+`GET /api/devtools/context` 会聚合 prompts、models、workspaces 和 runs。models 来源于 environments，但只暴露 `id`、`name`、`client`、`model`、`baseUrlConfigured`、`reasoningEffort` 和 `timeoutMs`，不会返回 `envVars` 值。
 
 ## 存储与部署模式
 

@@ -76,6 +76,8 @@ export function createSeed(root) {
         updatedAt: now()
       }
     ],
+    devtoolsApiKeys: [],
+    devtoolsConnections: [],
     runs: []
   };
 }
@@ -101,7 +103,7 @@ export function createFileStore({ root = process.cwd(), dataDir } = {}) {
   async function readStore() {
     await ensureStore();
     const raw = await fs.readFile(storePath, "utf8");
-    return JSON.parse(raw);
+    return { ...createSeed(root), ...JSON.parse(raw) };
   }
 
   async function writeStore(store) {

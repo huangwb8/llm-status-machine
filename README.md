@@ -13,7 +13,7 @@ A local experiment console for running prompts against LLM coding clients and pr
 - In parallel mode, keep attempts independent by copying each session from the selected initial Workspace.
 - Initialize git inside each session workspace on a single `main` branch, commit the initial state, run the client, commit the result, and store the diff.
 - Persist every session transcript as newline-delimited JSON plus `stdout.txt`, `stderr.txt`, metadata, artifacts, and patch files.
-- Expose a local API through DevTools for automation and model interaction.
+- Expose a DevTools External Agent API for trusted tools to observe runs, start experiments, and write session events.
 
 ## Run Locally
 
@@ -66,9 +66,9 @@ The full stack uses:
 - `DATABASE_URL=postgres://...`
 - `REDIS_URL=redis://...`
 
-The app and worker share `/app/data` for run files. Workspace state paths must use paths visible inside the container. By default `./examples` is mounted read-write at `/workspaces/examples`, so the bundled dry-run state uses `/workspaces/examples/buggy-js`. For real projects, set `WORKSPACES_MOUNT=/host/projects` and register states with container paths such as `/workspaces/examples/project-a`. Set `WORKSPACES_TARGET=/workspaces/github` if you prefer a different container path, and set `WORKSPACES_MOUNT_MODE=ro` only when the source folder should be read-only.
+The app and worker share `/app/data` for run files. Workspace state paths must use paths visible inside the API host or container. By default `./examples` is mounted read-write at `/workspaces/examples`, so the bundled dry-run state uses `/workspaces/examples/buggy-js`. For real projects, set `WORKSPACES_MOUNT=/host/projects` and register states with container paths such as `/workspaces/examples/project-a`. Set `WORKSPACES_TARGET=/workspaces/github` if you prefer a different container path, and set `WORKSPACES_MOUNT_MODE=ro` only when the source folder should be read-only.
 
-The Workspace directory picker is guarded as a local-machine action because it opens a native dialog on the API host. Open the app through `http://localhost:4317` when using Docker port mapping. To intentionally allow remote browser sessions to trigger that dialog on the server machine, set `DIRECTORY_PICKER_ALLOW_REMOTE=1`.
+The Workspace directory picker is guarded as a local-machine action because it opens a native dialog on the API host. Docker images do not install GUI directory picker tools by default, so Docker users should manually enter mounted container paths such as `/workspaces/examples/buggy-js`. The native picker is best suited to running the API directly on your desktop OS. Open the app through `http://localhost:4317` when using Docker port mapping. To intentionally allow remote browser sessions to trigger that dialog on the server machine, set `DIRECTORY_PICKER_ALLOW_REMOTE=1`.
 
 Codex and Claude CLIs are not installed in the base image. Dry Run and custom commands work out of the box; real LLM clients require extending the image or mounting the CLI, credentials, and workspaces yourself.
 
@@ -122,6 +122,14 @@ Every child process also receives:
 - `LLM_STATUS_MACHINE_WORKSPACE`: isolated workspace path
 - `LLM_STATUS_MACHINE_ARTIFACTS_DIR`: directory for extra run artifacts
 
+## DevTools
+
+Models is where LLM client capacity is configured: client type, model name, base URL, command template, timeout, and environment variables.
+
+DevTools is a controlled API entrance for trusted external AI/Agent tools. It does not provide model inference capacity. A local user can create or revoke DevTools keys in the UI; external tools call `/api/devtools/*` with `X-Devtools-Key`.
+
+The legacy `/api/agent/*` endpoints remain the in-session callback surface for a running Codex, Claude Code, or custom client. The DevTools API is broader: it supports connection lifecycle, read-only context, run creation, run/session reads, and authenticated session event/artifact writes.
+
 ## API
 
 ```bash
@@ -148,9 +156,55 @@ GET    /api/sessions/:id/diff
 GET    /api/sessions/:id/transcript
 GET    /api/sessions/:id/artifacts/:name
 GET    /api/events
+GET    /api/system/directory-picker
+
+GET    /api/devtools/ping
+GET    /api/devtools/admin
+POST   /api/devtools/admin/keys
+POST   /api/devtools/admin/keys/:id/revoke
+POST   /api/devtools/admin/connections/:id/terminate
+
+POST   /api/devtools/connect
+POST   /api/devtools/heartbeat
+POST   /api/devtools/disconnect
+GET    /api/devtools/context
+GET    /api/devtools/prompts
+GET    /api/devtools/models
+GET    /api/devtools/workspaces
+GET    /api/devtools/runs
+GET    /api/devtools/runs/:id
+POST   /api/devtools/runs
+GET    /api/devtools/sessions/:id/transcript
+GET    /api/devtools/sessions/:id/diff
+GET    /api/devtools/sessions/:id/artifacts/:name
+POST   /api/devtools/sessions/:id/events
+POST   /api/devtools/sessions/:id/artifacts
 
 POST   /api/agent/events
 POST   /api/agent/artifacts
+POST   /api/system/select-directory
+```
+
+Directory picker status returns the API host capability without opening a dialog:
+
+```json
+{
+  "available": false,
+  "platform": "linux",
+  "reason": "missing-command",
+  "command": "zenity",
+  "message": "Native directory picker is unavailable because zenity is not installed on the API host."
+}
+```
+
+`POST /api/system/select-directory` returns `403` when the browser session is not allowed to trigger host dialogs. When the native picker is unavailable it returns `409` with `{ "error": "...", "picker": { ... } }`; callers should keep the manual Workspace path flow available.
+
+DevTools smoke test:
+
+```bash
+curl http://localhost:4317/api/devtools/ping
+curl -H "X-Devtools-Key: $LLM_STATUS_MACHINE_DEVTOOLS_KEY" \
+  http://localhost:4317/api/devtools/context
 ```
 
 Start a run:

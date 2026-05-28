@@ -4,6 +4,22 @@
 
 ---
 
+LLM的鉴权信息，应该直接来自LLM对应的客户端，而不需要在本软件里进行设置。 目前是这样吗?
+
+---
+
+基于 docs/plans/2026-05-26-devtools-external-agent-api-plan.md 优化源代码。使用 awesome-code skill 辅助规划、优化。所有问题都要解决。 如果工作时有疑问，或者有更好的方案，自己选个最优方案优化，不要问我。不要破坏其它已经存在的功能。要保证最终成品能正常、稳定、高效地工作。
+
+---
+
+DevTools目前的功能应该是被曲解了。 它不是提供AI算力的API； 而是外部ai与本应用交互时，提供一个对外的API。 就像 /Volumes/2T01/winE/Starup/bensz-channel 里的 Devttools一样。 你规划一下，要怎么改； 制定一个计划。
+
+---
+
+基于 docs/plans/2026-05-26-directory-picker-optimization-plan.md 优化源代码。使用 awesome-code skill 辅助规划、优化。所有问题都要解决。 如果工作时有疑问，或者有更好的方案，自己选个最优方案优化，不要问我。不要破坏其它已经存在的功能。要保证最终成品能正常、稳定、高效地工作。
+
+---
+
 基于 docs/plans/2026-05-26-docker-postgres-redis-worker-plan.md 优化源代码。使用 awesome-code skill 辅助规划、优化。所有问题都要解决。 如果工作时有疑问，或者有更好的方案，自己选个最优方案优化，不要问我。不要破坏其它已经存在的功能。要保证最终成品能正常、稳定、高效地工作。
 
 ---
