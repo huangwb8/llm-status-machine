@@ -203,7 +203,7 @@ function CollectionEditor({ title, icon: Icon, items, activeId, setActiveId, set
       </div>
       <div className="splitEditor">
         <div className="recordList">
-          {items.map((item) => (
+          {items.map((item, index) => (
             <button
               key={item.id}
               className={cx("record", activeId === item.id && "active")}
@@ -212,8 +212,9 @@ function CollectionEditor({ title, icon: Icon, items, activeId, setActiveId, set
                 setDraft(item);
               }}
             >
-              <span>{item.name}</span>
-              <ChevronRight size={15} />
+              <span className="recordNumber">{String(index + 1).padStart(2, "0")}</span>
+              <span className="recordLabel">{item.name || "Untitled"}</span>
+              <ChevronRight className="recordArrow" size={15} />
             </button>
           ))}
           {!items.length && <div className="emptyLine">No records</div>}

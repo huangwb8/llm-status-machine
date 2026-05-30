@@ -27,6 +27,7 @@
 
 ### Changed（变更）
 
+- Prompts/Models/Workspace 集合编辑器左侧记录列表改为紧凑索引条目，避免编辑区高度把记录卡片拉伸成大方格，并提高标题字号与选中态层级。
 - Workspace 页面移除顶部 `Add Local Folder` 快捷按钮，保留表单内目录选择按钮与 `Save Workspace` 作为唯一添加流程，减少重复入口造成的困惑。
 - Runner 复制 Workspace 时兼容单目录与多目录状态；多目录会在隔离 workspace 中以同级子目录形式呈现，并继续保留 `path` 字段兼容旧数据。
 - Docker 相关部署文件集中到 `deploy/`：移动 Dockerfile、Compose 文件与 DockerHub 发布脚本，并保留根目录 `.dockerignore` 作为 build context 规则。

@@ -485,6 +485,17 @@ button { cursor: pointer; }
   gap: 8px;
 }
 
+.recordList {
+  align-content: start;
+  align-self: start;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--ink);
+  background:
+    linear-gradient(90deg, rgba(194,57,29,0.08), transparent 34%),
+    var(--paper);
+}
+
 .envPicker {
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
@@ -547,6 +558,63 @@ button { cursor: pointer; }
   padding: 12px 14px;
 }
 
+.recordList .record {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 18px;
+  min-height: 52px;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  background: transparent;
+  transform: none;
+}
+
+.recordList .record:last-child {
+  border-bottom: 0;
+}
+
+.recordList .record:hover {
+  background: var(--paper-2);
+  transform: none;
+}
+
+.recordList .recordNumber,
+.recordList .recordLabel {
+  min-width: 0;
+}
+
+.recordList .recordNumber {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 24px;
+  border-right: 1px solid var(--rule);
+  color: var(--cinnabar);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.recordList .recordLabel {
+  overflow: hidden;
+  color: var(--ink);
+  font-family: "Fraunces", serif;
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recordList .recordArrow {
+  color: var(--muted);
+  justify-self: end;
+}
+
 .runItem div {
   display: grid;
   gap: 3px;
@@ -560,6 +628,27 @@ button { cursor: pointer; }
   background: var(--ink);
   color: var(--paper);
   border-color: var(--ink);
+}
+
+.recordList .record.active {
+  box-shadow: inset 4px 0 0 var(--cinnabar);
+}
+
+.recordList .record.active::before {
+  display: none;
+}
+
+.recordList .record.active .recordNumber {
+  border-color: rgba(241,234,217,0.25);
+  color: var(--lime);
+}
+
+.recordList .record.active .recordLabel {
+  color: var(--paper);
+}
+
+.recordList .record.active .recordArrow {
+  color: var(--lime);
 }
 
 .record.active span,
