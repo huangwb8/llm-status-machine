@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { mapHostWorkspacePath, workspacePathMappingFromEnv } from "./workspacePathMapping.js";
 
 function routeError(status, message) {
   const error = new Error(message);
@@ -24,20 +25,35 @@ export async function validateWorkspaceFolders(value) {
   const folders = normalizeWorkspaceFolders(value);
   if (!folders.length) throw routeError(400, "At least one workspace folder path is required.");
 
+  const mapping = workspacePathMappingFromEnv();
   const resolvedFolders = [];
   for (const folder of folders) {
     if (!path.isAbsolute(folder)) throw routeError(400, "Workspace folder paths must be absolute.");
 
     const resolvedPath = path.resolve(folder);
+    const candidatePaths = [...new Set([resolvedPath, mapHostWorkspacePath(resolvedPath, mapping)])];
     let stats;
-    try {
-      stats = await fs.stat(resolvedPath);
-    } catch {
-      throw routeError(400, `Workspace folder does not exist: ${resolvedPath}`);
+    let visiblePath = resolvedPath;
+    for (const candidatePath of candidatePaths) {
+      try {
+        stats = await fs.stat(candidatePath);
+        visiblePath = candidatePath;
+        break;
+      } catch {
+        stats = null;
+      }
     }
 
-    if (!stats.isDirectory()) throw routeError(400, `Workspace path must point to a directory: ${resolvedPath}`);
-    resolvedFolders.push(resolvedPath);
+    if (!stats) {
+      const mappedPath = candidatePaths.find((candidatePath) => candidatePath !== resolvedPath);
+      const message = mappedPath
+        ? `Workspace folder does not exist: ${resolvedPath} (mapped to ${mappedPath})`
+        : `Workspace folder does not exist: ${resolvedPath}`;
+      throw routeError(400, message);
+    }
+
+    if (!stats.isDirectory()) throw routeError(400, `Workspace path must point to a directory: ${visiblePath}`);
+    resolvedFolders.push(visiblePath);
   }
 
   return [...new Set(resolvedFolders)];

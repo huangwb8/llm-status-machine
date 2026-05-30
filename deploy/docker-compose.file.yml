@@ -18,6 +18,8 @@ services:
       DATA_DIR: /app/data
       RUNS_DIR: /app/data/runs
       DEFAULT_STATE_PATH: ${DEFAULT_STATE_PATH:-/workspaces/examples/buggy-js}
+      WORKSPACES_MOUNT: ${WORKSPACES_MOUNT:-./examples}
+      WORKSPACES_TARGET: ${WORKSPACES_TARGET:-/workspaces/examples}
       LLM_STATUS_MACHINE_API: ${LLM_STATUS_MACHINE_API:-http://localhost:4317}
     volumes:
       - llm_status_data:/app/data

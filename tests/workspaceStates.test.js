@@ -42,6 +42,38 @@ test("normalizeWorkspaceState accepts multiple workspace folders", async () => {
   assert.equal(state.description, "multi root");
 });
 
+test("normalizeWorkspaceState maps host workspace paths to container-visible paths", async () => {
+  const previousMount = process.env.WORKSPACES_MOUNT;
+  const previousTarget = process.env.WORKSPACES_TARGET;
+  const hostRoot = await fs.mkdtemp(path.join(os.tmpdir(), "workspace-host-root-"));
+  const containerRoot = await fs.mkdtemp(path.join(os.tmpdir(), "workspace-container-root-"));
+  const containerProject = path.join(containerRoot, "project-a");
+  await fs.mkdir(containerProject);
+
+  try {
+    process.env.WORKSPACES_MOUNT = hostRoot;
+    process.env.WORKSPACES_TARGET = containerRoot;
+
+    const state = await normalizeWorkspaceState({
+      folders: [path.join(hostRoot, "project-a")]
+    });
+
+    assert.equal(state.path, containerProject);
+    assert.deepEqual(state.folders, [containerProject]);
+  } finally {
+    if (previousMount === undefined) {
+      delete process.env.WORKSPACES_MOUNT;
+    } else {
+      process.env.WORKSPACES_MOUNT = previousMount;
+    }
+    if (previousTarget === undefined) {
+      delete process.env.WORKSPACES_TARGET;
+    } else {
+      process.env.WORKSPACES_TARGET = previousTarget;
+    }
+  }
+});
+
 test("createStateFromDirectory rejects non-directories", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "workspace-state-file-"));
   const filePath = path.join(root, "note.txt");

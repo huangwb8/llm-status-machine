@@ -66,9 +66,9 @@ The full stack uses:
 - `DATABASE_URL=postgres://...`
 - `REDIS_URL=redis://...`
 
-The app and worker share `/app/data` for run files. Workspace state paths must use paths visible inside the API host or container. By default `./examples` is mounted read-write at `/workspaces/examples`, so the bundled dry-run state uses `/workspaces/examples/buggy-js`. For real projects, set `WORKSPACES_MOUNT=/host/projects` and register states with container paths such as `/workspaces/examples/project-a`. Set `WORKSPACES_TARGET=/workspaces/github` if you prefer a different container path, and set `WORKSPACES_MOUNT_MODE=ro` only when the source folder should be read-only.
+The app and worker share `/app/data` for run files. Workspace state paths are validated from the API host or container. In Docker, `WORKSPACES_MOUNT` is the host directory and `WORKSPACES_TARGET` is its container mount point; when you enter a host path under `WORKSPACES_MOUNT`, the API stores the matching container-visible path so runs can copy it normally. By default `./examples` is mounted read-write at `/workspaces/examples`, so the bundled dry-run state uses `/workspaces/examples/buggy-js`. For real projects, set `WORKSPACES_MOUNT=/host/projects`; you may then register either `/host/projects/project-a` or the container path `/workspaces/examples/project-a`. Set `WORKSPACES_TARGET=/workspaces/github` if you prefer a different container path, and set `WORKSPACES_MOUNT_MODE=ro` only when the source folder should be read-only.
 
-The Workspace directory picker is guarded as a local-machine action because it opens a native dialog on the API host. Docker images do not install GUI directory picker tools by default, so Docker users should manually enter mounted container paths such as `/workspaces/examples/buggy-js`. The native picker is best suited to running the API directly on your desktop OS. Open the app through `http://localhost:4317` when using Docker port mapping. To intentionally allow remote browser sessions to trigger that dialog on the server machine, set `DIRECTORY_PICKER_ALLOW_REMOTE=1`.
+The Workspace directory picker is guarded as a local-machine action because it opens a native dialog on the API host. Docker images do not install GUI directory picker tools by default, so Docker users should manually enter paths under the configured workspace mount, either as host paths or container paths. The native picker is best suited to running the API directly on your desktop OS. Open the app through `http://localhost:4317` when using Docker port mapping. To intentionally allow remote browser sessions to trigger that dialog on the server machine, set `DIRECTORY_PICKER_ALLOW_REMOTE=1`.
 
 Codex and Claude CLIs are not installed in the base image. Dry Run and custom commands work out of the box; real LLM clients require extending the image or mounting the CLI, credentials, and workspaces yourself.
 
@@ -200,7 +200,7 @@ Directory picker status returns the API host capability without opening a dialog
 
 `POST /api/system/select-directory` returns `403` when the browser session is not allowed to trigger host dialogs. When the native picker is unavailable it returns `409` with `{ "error": "...", "picker": { ... } }`; callers should keep the manual Workspace path flow available.
 
-Workspace state keeps `path` as a compatibility field for the first folder. New state data can also include `folders`, an array of absolute directory paths. `POST /api/states`, `PATCH /api/states/:id`, and `POST /api/states/from-directory` validate that every folder exists and is a directory.
+Workspace state keeps `path` as a compatibility field for the first folder. New state data can also include `folders`, an array of absolute directory paths. `POST /api/states`, `PATCH /api/states/:id`, and `POST /api/states/from-directory` validate that every folder exists and is a directory. When `WORKSPACES_MOUNT` and `WORKSPACES_TARGET` are configured, host paths below the mount are translated to container-visible paths before they are saved.
 
 DevTools smoke test:
 
