@@ -12,6 +12,7 @@
 - 新增 DockerHub 本地直推脚本与 Makefile 入口，支持 `DRY_RUN`、`PUSH=0`、`FORCE`、`SKIP_TESTS`、`ALLOW_DIRTY` 和 amd64/arm64/multiarch profile。
 - 新增外部 `node_modules` 托管脚本，可将依赖软链接到 `/Volumes/2T01/Test/llm-status-machine/node_modules` 并复用 npm cache。
 - 新增 storage、queue、runner 回归测试，覆盖文件存储 CRUD、inline queue 异步语义、Dry Run session、跨进程 artifact 写入。
+- 新增核心串行冒烟回归测试，使用默认诗题 Prompt、`./tmp` 子 Workspace 和 Dry Run Model 连续运行 3 次并校验每次记录结果。
 - 明确项目目标与产品计划，补充 `docs/plans/initial-product-plan.md`。
 - 增强 session transcript、stdout/stderr、artifact 与运行中 AI 客户端可调用的本地 API。
 - 前端新增 transcript 与 artifact 查看区域，方便复盘模型行为。
@@ -24,9 +25,11 @@
 - 新增 DevTools API Key、外部连接生命周期与只读上下文 API，供外部 Agent 受控读取实验上下文。
 - 新增 `/api/devtools/*` 外部 Agent API，支持 API Key 鉴权、连接心跳、run 启动、session 读取以及事件/artifact 写入。
 - 新增工程规则：源代码变更后必须重新构建并部署 Docker 镜像供用户审查。
+- 新增交付前核心冒烟测试规则，要求源代码改动收尾前确认默认诗题任务可串行 3 次跑通并完整记录。
 
 ### Changed（变更）
 
+- Experiment 页面将 Run Bench 与 Execution Ledger 从左右并排调整为上下堆叠，减少宽屏下两块核心操作区域互相挤压。
 - Prompts/Models/Workspace 集合编辑器左侧记录列表改为紧凑索引条目，避免编辑区高度把记录卡片拉伸成大方格，并提高标题字号与选中态层级。
 - Workspace 页面移除顶部 `Add Local Folder` 快捷按钮，保留表单内目录选择按钮与 `Save Workspace` 作为唯一添加流程，减少重复入口造成的困惑。
 - Runner 复制 Workspace 时兼容单目录与多目录状态；多目录会在隔离 workspace 中以同级子目录形式呈现，并继续保留 `path` 字段兼容旧数据。

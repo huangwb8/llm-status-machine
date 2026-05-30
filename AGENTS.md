@@ -34,6 +34,12 @@
 - 文档更新应保持一致性
 - 测试覆盖应符合项目标准
 
+## 核心冒烟测试
+
+- 项目可正常运转的最低标准：给定一个 Prompt、一个 Workspace（默认使用本仓库 `./tmp` 下的子目录）和一个 Model，能够以 `serial` 模式连续运行 3 次，并为每次 session 记录 transcript、stdout/stderr、artifact/metadata、工作区 git snapshot、changed files 与 diff，最终 run 状态为 `completed`。
+- 默认测试任务：Prompt 为 `请以“新中国的美人”为题写一首七言绝句。`；测试环境可使用 Dry Run/Simulator 或用户指定真实模型，但必须验证 3 次串行 session 都成功完成并生成记录。
+- 每次改动源代码、进行收尾准备交付前，必须运行项目自动化测试，并确认上述核心任务顺利跑通；若无法运行，必须在交付说明中明确原因、风险和补救方式。
+
 ## 项目目录约定
 
 - `./tmp`：临时文件与测试中间产物，可不定期清理

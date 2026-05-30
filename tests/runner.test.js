@@ -15,7 +15,7 @@ async function waitForRun(readStore, runId) {
   throw new Error("Timed out waiting for run to finish");
 }
 
-test("inline runner completes a dry-run session and records workspace diff", async () => {
+test("core serial smoke runs the default poem prompt three times and records each result", async () => {
   process.env.DATA_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "llm-status-runner-"));
   process.env.STORAGE_DRIVER = "file";
   process.env.QUEUE_DRIVER = "inline";
@@ -23,20 +23,95 @@ test("inline runner completes a dry-run session and records workspace diff", asy
   process.env.LLM_STATUS_MACHINE_API = "";
 
   const { startRun, writeAgentArtifact } = await import("../server/runner.js");
-  const { readStore } = await import("../server/store.js");
+  const { readStore, writeStore } = await import("../server/store.js");
+
+  const tmpRoot = path.join(process.cwd(), "tmp");
+  await fs.mkdir(tmpRoot, { recursive: true });
+  const sourceWorkspace = await fs.mkdtemp(path.join(tmpRoot, "core-smoke-workspace-"));
+  await fs.writeFile(path.join(sourceWorkspace, "README.md"), "# Core smoke workspace\n");
+
+  const now = new Date().toISOString();
+  await writeStore({
+    prompts: [
+      {
+        id: "prompt-core-poem",
+        name: "核心冒烟任务：七言绝句",
+        body: "请以“新中国的美人”为题写一首七言绝句。",
+        tags: ["smoke"],
+        createdAt: now,
+        updatedAt: now
+      }
+    ],
+    environments: [
+      {
+        id: "env-dry-run",
+        name: "Dry Run",
+        client: "custom",
+        model: "simulator",
+        baseUrl: "",
+        reasoningEffort: "none",
+        commandTemplate: "node {simulator} {promptFile}",
+        envVars: {},
+        timeoutMs: 120000,
+        createdAt: now,
+        updatedAt: now
+      }
+    ],
+    states: [
+      {
+        id: "state-core-smoke",
+        name: "Core Smoke Workspace",
+        path: sourceWorkspace,
+        folders: [sourceWorkspace],
+        description: "Temporary workspace under ./tmp for the required serial smoke test.",
+        createdAt: now,
+        updatedAt: now
+      }
+    ],
+    devtoolsApiKeys: [],
+    devtoolsConnections: [],
+    runs: []
+  });
 
   const created = await startRun({
-    stateId: "state-buggy-js",
+    stateId: "state-core-smoke",
     environmentId: "env-dry-run",
     mode: "serial",
-    promptRuns: [{ promptId: "prompt-review", count: 1 }]
+    promptRuns: [{ promptId: "prompt-core-poem", count: 3 }]
   });
 
   const run = await waitForRun(readStore, created.id);
   assert.equal(run.status, "completed");
-  assert.equal(run.sessions.length, 1);
-  assert.equal(run.sessions[0].status, "completed");
-  assert.equal(run.sessions[0].changedFiles.some((item) => item.file === "llm-simulator-notes.md"), true);
+  assert.equal(run.sessions.length, 3);
+
+  run.sessions.forEach((session, index) => {
+    assert.equal(session.status, "completed");
+    assert.equal(session.sequence, index + 1);
+    assert.equal(session.iteration, index + 1);
+    assert.equal(session.outputStateName, `state-${index + 1}`);
+    assert.equal(session.changedFiles.some((item) => item.file === "llm-simulator-notes.md"), true);
+    assert.match(session.diffStat, /llm-simulator-notes\.md/);
+    assert.equal(session.events.some((event) => event.type === "session_started"), true);
+    assert.equal(session.events.some((event) => event.type === "stdout"), true);
+    assert.equal(session.events.some((event) => event.type === "session_finished"), true);
+  });
+
+  assert.deepEqual(run.sessions[0].sourceWorkspace, [sourceWorkspace]);
+  assert.equal(run.sessions[1].sourceWorkspace, run.sessions[0].workspace);
+  assert.equal(run.sessions[2].sourceWorkspace, run.sessions[1].workspace);
+
+  for (const session of run.sessions) {
+    const sessionDir = path.dirname(session.workspace);
+    const prompt = await fs.readFile(path.join(sessionDir, "prompt.txt"), "utf8");
+    const transcript = await fs.readFile(path.join(sessionDir, "transcript.ndjson"), "utf8");
+    const diff = await fs.readFile(path.join(sessionDir, "diff.patch"), "utf8");
+    const metadata = JSON.parse(await fs.readFile(path.join(sessionDir, "metadata.json"), "utf8"));
+    assert.match(prompt, /新中国的美人/);
+    assert.match(transcript, /session_finished/);
+    assert.match(diff, /llm-simulator-notes\.md/);
+    assert.equal(metadata.prompt.id, "prompt-core-poem");
+    assert.equal(metadata.environment.model, "simulator");
+  }
 
   const session = run.sessions[0];
   await writeAgentArtifact({
