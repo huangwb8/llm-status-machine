@@ -41,6 +41,7 @@
 
 ### Fixed（修复）
 
+- 修复真实 Codex/Claude 运行输出较多时，文件存储并发写入 `store.json` 可能造成 JSON 损坏或事件丢失的问题；runner 现在会按序等待进程事件写入完成。
 - 修复 Docker 部署下 Workspace 只能填写容器路径的问题：现在可直接输入 `WORKSPACES_MOUNT` 下的宿主机路径，API 会映射为容器可见路径后保存并运行。
 - 改进 Docker/Linux 环境缺少原生 GUI 目录选择器时的 Workspace 处理：新增能力检测 API，前端禁用不可用的选择按钮并引导用户填写容器内可见路径。
 - 修复本机通过 Docker 端口映射、本机网卡地址或非标准 localhost 入口访问时，Workspace 目录选择器误报只能从 localhost 使用的问题；前端 API 错误提示现在会显示可读文本而不是原始 JSON。

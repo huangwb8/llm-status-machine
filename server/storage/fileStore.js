@@ -88,6 +88,21 @@ export function createFileStore({ root = process.cwd(), dataDir } = {}) {
   const runsDir = path.join(resolvedDataDir, "runs");
   const statesDir = path.join(resolvedDataDir, "states");
   const storePath = path.join(resolvedDataDir, "store.json");
+  let writeChain = Promise.resolve();
+
+  async function withWriteLock(action) {
+    const previous = writeChain;
+    let release;
+    writeChain = new Promise((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await action();
+    } finally {
+      release();
+    }
+  }
 
   async function ensureStore() {
     await fs.mkdir(resolvedDataDir, { recursive: true });
@@ -107,9 +122,15 @@ export function createFileStore({ root = process.cwd(), dataDir } = {}) {
     return { ...createSeed(root), ...JSON.parse(raw) };
   }
 
-  async function writeStore(store) {
+  async function writeStoreUnlocked(store) {
     await fs.mkdir(resolvedDataDir, { recursive: true });
-    await fs.writeFile(storePath, JSON.stringify(store, null, 2));
+    const tempPath = `${storePath}.${process.pid}.${nanoid(6)}.tmp`;
+    await fs.writeFile(tempPath, JSON.stringify(store, null, 2));
+    await fs.rename(tempPath, storePath);
+  }
+
+  async function writeStore(store) {
+    return withWriteLock(() => writeStoreUnlocked(store));
   }
 
   async function listCollection(name) {
@@ -123,47 +144,49 @@ export function createFileStore({ root = process.cwd(), dataDir } = {}) {
   }
 
   async function createItem(collection, attrs) {
-    const store = await readStore();
-    const item = {
-      id: attrs.id || nanoid(12),
-      ...attrs,
-      createdAt: attrs.createdAt || now(),
-      updatedAt: now()
-    };
-    store[collection] = [item, ...(store[collection] ?? [])];
-    await writeStore(store);
-    return item;
+    return mutateStore((store) => {
+      const item = {
+        id: attrs.id || nanoid(12),
+        ...attrs,
+        createdAt: attrs.createdAt || now(),
+        updatedAt: now()
+      };
+      store[collection] = [item, ...(store[collection] ?? [])];
+      return item;
+    });
   }
 
   async function updateItem(collection, id, patch) {
-    const store = await readStore();
-    const items = store[collection] ?? [];
-    const index = items.findIndex((item) => item.id === id);
-    if (index < 0) return null;
+    return mutateStore((store) => {
+      const items = store[collection] ?? [];
+      const index = items.findIndex((item) => item.id === id);
+      if (index < 0) return null;
 
-    items[index] = {
-      ...items[index],
-      ...patch,
-      id,
-      updatedAt: now()
-    };
-    await writeStore(store);
-    return items[index];
+      items[index] = {
+        ...items[index],
+        ...patch,
+        id,
+        updatedAt: now()
+      };
+      return items[index];
+    });
   }
 
   async function deleteItem(collection, id) {
-    const store = await readStore();
-    const before = store[collection] ?? [];
-    store[collection] = before.filter((item) => item.id !== id);
-    await writeStore(store);
-    return before.length !== store[collection].length;
+    return mutateStore((store) => {
+      const before = store[collection] ?? [];
+      store[collection] = before.filter((item) => item.id !== id);
+      return before.length !== store[collection].length;
+    });
   }
 
   async function mutateStore(mutator) {
-    const store = await readStore();
-    const result = await mutator(store);
-    await writeStore(store);
-    return result;
+    return withWriteLock(async () => {
+      const store = await readStore();
+      const result = await mutator(store);
+      await writeStoreUnlocked(store);
+      return result;
+    });
   }
 
   async function createRun(run) {

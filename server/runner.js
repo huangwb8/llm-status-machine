@@ -115,6 +115,11 @@ function renderCommand(template, context) {
 
 function runCommand(command, cwd, env, timeoutMs, onEvent) {
   return new Promise((resolve) => {
+    let eventQueue = Promise.resolve();
+    const enqueueEvent = (type, payload) => {
+      eventQueue = eventQueue.then(() => onEvent(type, payload));
+      eventQueue.catch(() => {});
+    };
     const child = spawn(command, {
       cwd,
       env: { ...process.env, ...env },
@@ -128,11 +133,12 @@ function runCommand(command, cwd, env, timeoutMs, onEvent) {
       setTimeout(() => child.kill("SIGKILL"), 3000).unref();
     }, timeoutMs || 600000);
 
-    child.stdout.on("data", (chunk) => onEvent("stdout", chunk.toString()));
-    child.stderr.on("data", (chunk) => onEvent("stderr", chunk.toString()));
-    child.on("error", (error) => onEvent("error", error.message));
-    child.on("close", (code, signal) => {
+    child.stdout.on("data", (chunk) => enqueueEvent("stdout", chunk.toString()));
+    child.stderr.on("data", (chunk) => enqueueEvent("stderr", chunk.toString()));
+    child.on("error", (error) => enqueueEvent("error", error.message));
+    child.on("close", async (code, signal) => {
       clearTimeout(timer);
+      await eventQueue;
       resolve({ code, signal, timedOut });
     });
   });

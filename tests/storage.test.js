@@ -51,3 +51,25 @@ test("file storage preserves collection CRUD and aggregate store shape", async (
   assert.equal(await store.deleteItem("prompts", "prompt-test"), true);
   assert.equal(await store.getItem("prompts", "prompt-test"), null);
 });
+
+test("file storage serializes concurrent mutations without losing updates", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "llm-status-store-concurrent-"));
+  const store = createFileStore({ root });
+
+  await Promise.all(
+    Array.from({ length: 25 }, (_, index) =>
+      store.mutateStore(async (state) => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        state.prompts.push({
+          id: `concurrent-prompt-${index}`,
+          name: `Prompt ${index}`,
+          body: "Concurrent write"
+        });
+      })
+    )
+  );
+
+  const aggregate = await store.readStore();
+  const created = aggregate.prompts.filter((prompt) => prompt.id.startsWith("concurrent-prompt-"));
+  assert.equal(created.length, 25);
+});
