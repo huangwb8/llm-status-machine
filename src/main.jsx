@@ -49,6 +49,11 @@ const api = {
     await this.ensureOk(response);
     return response.json();
   },
+  async getText(path) {
+    const response = await fetch(`/api${path}`);
+    await this.ensureOk(response);
+    return response.text();
+  },
   async post(path, body) {
     const response = await fetch(`/api${path}`, {
       method: "POST",
@@ -100,6 +105,26 @@ function cx(...parts) {
 
 function formatPayload(payload) {
   return typeof payload === "string" ? payload : JSON.stringify(payload);
+}
+
+function envVarsToText(envVars = {}) {
+  return Object.entries(envVars || {})
+    .map(([key, value]) => `${key}=${value ?? ""}`)
+    .join("\n");
+}
+
+function envVarsFromText(value) {
+  return String(value || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .reduce((envVars, line) => {
+      const separatorIndex = line.indexOf("=");
+      const key = (separatorIndex >= 0 ? line.slice(0, separatorIndex) : line).trim();
+      if (!key) return envVars;
+      envVars[key] = separatorIndex >= 0 ? line.slice(separatorIndex + 1) : "";
+      return envVars;
+    }, {});
 }
 
 function parseTranscript(raw) {
@@ -273,7 +298,7 @@ function ExperimentView({
           eyebrow="Experiment"
           title="Run Bench"
           action={
-            <button className="primary" disabled={busy || !store.states.length || !runConfig.promptRuns.length} onClick={start}>
+            <button className="primary" disabled={busy || !store.states.length || !store.environments.length || !runConfig.promptRuns.length} onClick={start}>
               {busy ? <Loader2 className="spin" size={17} /> : <Play size={17} />}
               Start
             </button>
@@ -421,12 +446,21 @@ function ExperimentView({
               {!selectedSession.changedFiles?.length && <span>No file changes</span>}
             </div>
             <div className="artifactList">
+              <a href={`/api/sessions/${selectedSession.id}/stdout`} target="_blank" rel="noreferrer">
+                stdout.txt
+              </a>
+              <a href={`/api/sessions/${selectedSession.id}/stderr`} target="_blank" rel="noreferrer">
+                stderr.txt
+              </a>
+              <a href={`/api/sessions/${selectedSession.id}/metadata`} target="_blank" rel="noreferrer">
+                metadata.json
+              </a>
               {(selectedSession.artifacts || []).map((artifact) => (
                 <a key={artifact.name} href={`/api/sessions/${selectedSession.id}/artifacts/${encodeURIComponent(artifact.name)}`} target="_blank" rel="noreferrer">
                   {artifact.name} · {artifact.size} B
                 </a>
               ))}
-              {!selectedSession.artifacts?.length && <span>No artifacts</span>}
+              {!selectedSession.artifacts?.length && <span>No custom artifacts</span>}
             </div>
           </div>
         )}
@@ -544,6 +578,14 @@ function ModelsView({ store, activeEnv, setActiveEnv, envDraft, setEnvDraft, sav
       </div>
       <Field label="Command">
         <TextArea rows={4} value={envDraft.commandTemplate} onChange={(event) => setEnvDraft({ ...envDraft, commandTemplate: event.target.value })} />
+      </Field>
+      <Field label="Environment variables">
+        <TextArea
+          rows={4}
+          placeholder="OPENAI_API_KEY=..."
+          value={envVarsToText(envDraft.envVars)}
+          onChange={(event) => setEnvDraft({ ...envDraft, envVars: envVarsFromText(event.target.value) })}
+        />
       </Field>
       <button className="primary mini" disabled={busy || !envDraft.name || !envDraft.commandTemplate} onClick={() => save("environments", activeEnv, envDraft, setActiveEnv)}>
         <Bot size={16} />
@@ -916,9 +958,6 @@ function App() {
     const timer = setInterval(() => refresh().catch(() => {}), 2500);
     const source = new EventSource("/api/events");
     source.onmessage = (event) => setEvents((current) => [JSON.parse(event.data), ...current].slice(0, 80));
-    for (const type of ["stdout", "stderr", "error", "session_started", "session_finished", "run_finished", "run_failed"]) {
-      source.addEventListener(type, (event) => setEvents((current) => [JSON.parse(event.data), ...current].slice(0, 80)));
-    }
     return () => {
       clearInterval(timer);
       source.close();
@@ -970,15 +1009,13 @@ function App() {
       setTranscript([]);
       return;
     }
-    fetch(`/api/sessions/${selectedSession.id}/diff`)
-      .then((response) => response.text())
+    api.getText(`/sessions/${selectedSession.id}/diff`)
       .then(setDiff)
       .catch(() => setDiff(""));
-    fetch(`/api/sessions/${selectedSession.id}/transcript`)
-      .then((response) => response.text())
+    api.getText(`/sessions/${selectedSession.id}/transcript`)
       .then((text) => setTranscript(parseTranscript(text)))
       .catch(() => setTranscript([]));
-  }, [selectedSession?.id]);
+  }, [selectedSession?.id, selectedSession?.status, selectedSession?.events?.length, selectedSession?.diffStat]);
 
   async function save(collection, activeId, draft, setter) {
     setBusy(true);
@@ -1054,7 +1091,7 @@ function App() {
     }
   }
 
-  const running = store.runs.some((run) => run.status === "running");
+  const running = store.runs.some((run) => ["queued", "running"].includes(run.status));
   const activeViewMeta = views.find((view) => view.id === activeView);
 
   return (

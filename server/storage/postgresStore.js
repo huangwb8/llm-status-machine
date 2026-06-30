@@ -40,7 +40,10 @@ export function createPostgresStore({ connectionString = process.env.DATABASE_UR
       [collection]
     );
     const rows = result.rows.map((row) => row.body);
-    return rows.length ? rows : createSeed(root)[collection] ?? [];
+    const seeded = createSeed(root)[collection] ?? [];
+    const merged = new Map(seeded.map((item) => [item.id, item]));
+    for (const row of rows) merged.set(row.id, row);
+    return [...merged.values()].filter((item) => !item.deletedAt).sort(byUpdatedDesc);
   }
 
   async function hydrateRuns(runRows) {
@@ -89,8 +92,8 @@ export function createPostgresStore({ connectionString = process.env.DATABASE_UR
   }
 
   async function listRuns() {
-    const result = await query("select body from runs order by created_at desc");
-    return result.rows.map((row) => row.body);
+    const result = await query("select id, body from runs order by created_at desc");
+    return hydrateRuns(result.rows);
   }
 
   async function readStore() {
@@ -173,7 +176,9 @@ export function createPostgresStore({ connectionString = process.env.DATABASE_UR
     if (collection === "runs") return readRun(id);
     if (!DOCUMENT_COLLECTIONS.includes(collection)) return null;
     const result = await query("select body from documents where collection = $1 and id = $2", [collection, id]);
-    return result.rows[0]?.body ?? createSeed(root)[collection]?.find((item) => item.id === id) ?? null;
+    const persisted = result.rows[0]?.body;
+    if (persisted) return persisted.deletedAt ? null : persisted;
+    return createSeed(root)[collection]?.find((item) => item.id === id) ?? null;
   }
 
   async function createItem(collection, attrs) {
@@ -199,18 +204,29 @@ export function createPostgresStore({ connectionString = process.env.DATABASE_UR
     if (!existing) return null;
     const item = { ...existing, ...patch, id, updatedAt: now() };
     await query(
-      `update documents
-       set body = $3::jsonb, updated_at = coalesce($4::timestamptz, now())
-       where collection = $1 and id = $2`,
-      [collection, id, JSON.stringify(item), item.updatedAt]
+      `insert into documents (collection, id, body, created_at, updated_at)
+       values ($1, $2, $3::jsonb, coalesce($4::timestamptz, now()), coalesce($5::timestamptz, now()))
+       on conflict (collection, id) do update
+       set body = excluded.body, updated_at = excluded.updated_at`,
+      [collection, id, JSON.stringify(item), item.createdAt, item.updatedAt]
     );
     return item;
   }
 
   async function deleteItem(collection, id) {
     if (!DOCUMENT_COLLECTIONS.includes(collection)) throw new Error(`Unsupported collection: ${collection}`);
-    const result = await query("delete from documents where collection = $1 and id = $2", [collection, id]);
-    return result.rowCount > 0;
+    const existing = await getItem(collection, id);
+    if (!existing) return false;
+    const deletedAt = now();
+    const tombstone = { id, createdAt: existing.createdAt || deletedAt, updatedAt: deletedAt, deletedAt };
+    await query(
+      `insert into documents (collection, id, body, created_at, updated_at)
+       values ($1, $2, $3::jsonb, coalesce($4::timestamptz, now()), coalesce($5::timestamptz, now()))
+       on conflict (collection, id) do update
+       set body = excluded.body, updated_at = excluded.updated_at`,
+      [collection, id, JSON.stringify(tombstone), tombstone.createdAt, tombstone.updatedAt]
+    );
+    return true;
   }
 
   async function mutateStore(mutator) {

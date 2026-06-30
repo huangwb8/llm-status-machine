@@ -25,6 +25,12 @@ const simulatorPath = path.join(serverDir, "simulator.js");
 const activeSessions = new Map();
 export { subscribe };
 
+function validationError(message) {
+  const error = new Error(message);
+  error.status = 400;
+  return error;
+}
+
 function getSessionPaths(sessionDir) {
   return {
     transcript: path.join(sessionDir, "transcript.ndjson"),
@@ -309,37 +315,44 @@ export async function processRunJob({ runId }) {
   const run = await getItem("runs", runId);
   if (!run) throw new Error(`Run not found: ${runId}`);
 
-  const [states, environments, prompts] = await Promise.all([
-    listCollection("states"),
-    listCollection("environments"),
-    listCollection("prompts")
-  ]);
-  const state = states.find((item) => item.id === run.stateId);
-  const environment = environments.find((item) => item.id === run.environmentId);
-  if (!state) throw new Error("State not found");
-  if (!environment) throw new Error("Environment not found");
-
-  const jobs = createExecutionPlan({
-    mode: run.mode,
-    runId: run.id,
-    initialWorkspace: workspaceFoldersFromState(state),
-    promptRuns: run.promptRuns,
-    prompts,
-    outputWorkspaceFor: ({ outputLabel }) => path.join(RUNS_DIR, run.id, outputLabel, "workspace")
-  }).map((job) => ({ ...job, run, environment, state }));
-
   try {
+    await patchRun(run.id, (storedRun) => {
+      storedRun.status = "running";
+      storedRun.startedAt = storedRun.startedAt || timestamp();
+    });
+
+    const [states, environments, prompts] = await Promise.all([
+      listCollection("states"),
+      listCollection("environments"),
+      listCollection("prompts")
+    ]);
+    const state = states.find((item) => item.id === run.stateId);
+    const environment = environments.find((item) => item.id === run.environmentId);
+    if (!state) throw validationError("State not found");
+    if (!environment) throw validationError("Environment not found");
+
+    const jobs = createExecutionPlan({
+      mode: run.mode,
+      runId: run.id,
+      initialWorkspace: workspaceFoldersFromState(state),
+      promptRuns: run.promptRuns,
+      prompts,
+      outputWorkspaceFor: ({ outputLabel }) => path.join(RUNS_DIR, run.id, outputLabel, "workspace")
+    }).map((job) => ({ ...job, run, environment, state }));
+
     if (run.mode === "parallel") {
       await Promise.all(jobs.map((job) => runSession(job)));
     } else {
       for (const job of jobs) await runSession(job);
     }
+    let status = "completed";
     await patchRun(run.id, (storedRun) => {
       const failed = storedRun.sessions.some((session) => session.status === "failed");
-      storedRun.status = failed ? "failed" : "completed";
+      status = failed ? "failed" : "completed";
+      storedRun.status = status;
       storedRun.endedAt = timestamp();
     });
-    await emit(run.id, null, "run_finished", { status: "done" });
+    await emit(run.id, null, "run_finished", { status });
   } catch (error) {
     await patchRun(run.id, (storedRun) => {
       storedRun.status = "failed";
@@ -358,16 +371,17 @@ export async function startRun(config) {
   ]);
   const state = states.find((item) => item.id === config.stateId);
   const environment = environments.find((item) => item.id === config.environmentId);
-  const prompts = config.promptRuns
+  const promptRuns = Array.isArray(config.promptRuns) ? config.promptRuns : [];
+  const prompts = promptRuns
     .map((selection) => {
       const prompt = storedPrompts.find((item) => item.id === selection.promptId);
       return prompt ? { ...selection, prompt } : null;
     })
     .filter(Boolean);
 
-  if (!state) throw new Error("State not found");
-  if (!environment) throw new Error("Environment not found");
-  if (!prompts.length) throw new Error("Select at least one prompt");
+  if (!state) throw validationError("State not found");
+  if (!environment) throw validationError("Environment not found");
+  if (!prompts.length) throw validationError("Select at least one prompt");
 
   const run = {
     id: nanoid(12),
@@ -377,10 +391,10 @@ export async function startRun(config) {
     environmentId: environment.id,
     environmentName: environment.name,
     mode: config.mode === "parallel" ? "parallel" : "serial",
-    promptRuns: config.promptRuns,
+    promptRuns,
     source: config.source || "local",
     devtools: config.devtools || null,
-    status: "running",
+    status: "queued",
     startedAt: timestamp(),
     endedAt: null,
     sessions: [],

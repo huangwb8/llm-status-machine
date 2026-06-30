@@ -41,6 +41,17 @@
 
 ### Fixed（修复）
 
+- 修复 Models 页面无法编辑后端已支持的运行环境变量问题；现在可用 `KEY=value` 多行文本配置 API Key 等额外环境变量，并由 runner 注入真实命令环境。
+- 修复无可用 Model 时前端仍可启动 run、后端把可纠正输入错误返回 500 的问题；Start 按钮现在会校验 Model 存在，`POST /api/runs` 缺 state/environment/prompt 时返回 400。
+- 修复运行中选中 session 的 transcript/diff 不随同一 session 事件追加或完成状态自动刷新、错误响应会被当成内容展示的问题。
+- 修复后端已保存 stdout/stderr/metadata 但普通 API、DevTools API 与前端 session 详情没有直接读取入口的问题。
+- 修复 Postgres 模式下 `/api/runs` 与 `/api/devtools/runs` 列表没有 hydrate sessions/events，导致列表和详情、`/api/store` 返回结构不一致的问题。
+- 修复 Postgres 模式下删除内置 seed 记录后会被 seed 合并逻辑重新显示的问题；删除现在写入 tombstone，行为与文件存储的删除语义保持一致。
+- 修复 `/api/store` 暴露 DevTools key hash 的问题；普通聚合接口现在只返回公开 key/connection 字段。
+- 修复 run 生命周期状态过早显示为 `running` 的问题；run 创建后先进入 `queued`，worker 实际处理时再进入 `running`，完成事件 payload 与最终 run 状态保持一致。
+- 修复部分 DevTools 状态缺少 pill 样式、集合 DELETE 未命中时没有统一 JSON 错误体的问题。
+- 修复 Postgres 模式下首次编辑内置 seed Model 时保存后又恢复默认值的问题：seed 记录此前只作为读取兜底存在，更新时纯 `UPDATE documents` 找不到实际行却仍返回成功；现在更新文档使用 upsert，首次保存会真正写入 Postgres，并在读取时用持久化记录覆盖同 ID seed、保留其它默认 Model。
+- 修复 Prompts/Models/Workspace 集合编辑器左侧记录列表的选中项被鼠标悬停时文字变浅白看不清的问题：`.recordList .record:hover` 的背景规则特异性高于 `.record.active`，会把选中态深色底覆盖成浅色，导致浅色标题/编号/箭头落在浅底上不可读；新增 `.record.active:hover` 规则让选中项悬停时保持深色底。
 - 修复真实 Codex/Claude 运行输出较多时，文件存储并发写入 `store.json` 可能造成 JSON 损坏或事件丢失的问题；runner 现在会按序等待进程事件写入完成。
 - 修复 Docker 部署下 Workspace 只能填写容器路径的问题：现在可直接输入 `WORKSPACES_MOUNT` 下的宿主机路径，API 会映射为容器可见路径后保存并运行。
 - 改进 Docker/Linux 环境缺少原生 GUI 目录选择器时的 Workspace 处理：新增能力检测 API，前端禁用不可用的选择按钮并引导用户填写容器内可见路径。

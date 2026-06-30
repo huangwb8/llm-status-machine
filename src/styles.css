@@ -581,6 +581,13 @@ button { cursor: pointer; }
   transform: none;
 }
 
+/* Active item must keep a dark bg on hover: its light text (--paper) and
+   arrow/number (--lime) are otherwise unreadable on the light --paper-2 bg
+   that .recordList .record:hover applies with higher specificity. */
+.recordList .record.active:hover {
+  background: var(--ink-2);
+}
+
 .recordList .recordNumber,
 .recordList .recordLabel {
   min-width: 0;
@@ -1067,7 +1074,8 @@ button { cursor: pointer; }
   flex-shrink: 0;
 }
 
-.pill-running {
+.pill-running,
+.pill-queued {
   background: var(--lime);
   color: var(--lime-deep);
   border-color: var(--lime-deep);
@@ -1075,16 +1083,24 @@ button { cursor: pointer; }
 }
 
 .pill-completed,
-.pill-ready {
+.pill-ready,
+.pill-done {
   background: var(--teal-soft);
   color: var(--teal);
   border-color: var(--teal);
 }
 
-.pill-failed {
+.pill-failed,
+.pill-revoked {
   background: #f4ded8;
   color: var(--cinnabar-ink);
   border-color: var(--cinnabar);
+}
+
+.pill-stopping {
+  background: #f3ead9;
+  color: #7a4c14;
+  border-color: #b8842b;
 }
 
 .pill-idle {

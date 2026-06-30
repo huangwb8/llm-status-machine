@@ -1,15 +1,27 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+
+async function withServer(app, callback) {
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  try {
+    await callback(`http://127.0.0.1:${port}`);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+}
 
 async function waitForRun(readStore, runId) {
   const deadline = Date.now() + 10000;
   while (Date.now() < deadline) {
     const store = await readStore();
     const run = store.runs.find((item) => item.id === runId);
-    if (run && run.status !== "running") return run;
+    if (run && !["queued", "running"].includes(run.status)) return run;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error("Timed out waiting for run to finish");
@@ -135,6 +147,130 @@ test("core serial smoke runs the default poem prompt three times and records eac
     /Session not found/
   );
   await assert.rejects(fs.access(escapedPath));
+});
+
+test("runs API validates missing environment as a client error", async () => {
+  process.env.DATA_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "llm-status-runner-api-validation-"));
+  process.env.STORAGE_DRIVER = "file";
+  process.env.QUEUE_DRIVER = "inline";
+  process.env.EVENT_BUS = "memory";
+
+  const { createApp } = await import("../server/index.js");
+  const { writeStore } = await import("../server/store.js");
+
+  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "llm-status-api-validation-workspace-"));
+  const now = new Date().toISOString();
+  await writeStore({
+    prompts: [{ id: "prompt-api", name: "Prompt", body: "Do it", tags: [], createdAt: now, updatedAt: now }],
+    environments: [],
+    states: [{ id: "state-api", name: "State", path: workspace, folders: [workspace], description: "", createdAt: now, updatedAt: now }],
+    devtoolsApiKeys: [],
+    devtoolsConnections: [],
+    runs: []
+  });
+
+  await withServer(createApp(), async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/runs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        stateId: "state-api",
+        mode: "serial",
+        promptRuns: [{ promptId: "prompt-api", count: 1 }]
+      })
+    });
+
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).error, "Environment not found");
+  });
+});
+
+test("runs API serial smoke completes three dry-run sessions", async () => {
+  process.env.DATA_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "llm-status-runner-api-smoke-"));
+  process.env.STORAGE_DRIVER = "file";
+  process.env.QUEUE_DRIVER = "inline";
+  process.env.EVENT_BUS = "memory";
+
+  const { createApp } = await import("../server/index.js");
+  const { readStore, writeStore } = await import("../server/store.js");
+
+  const tmpRoot = path.join(process.cwd(), "tmp");
+  await fs.mkdir(tmpRoot, { recursive: true });
+  const sourceWorkspace = await fs.mkdtemp(path.join(tmpRoot, "api-core-smoke-workspace-"));
+  await fs.writeFile(path.join(sourceWorkspace, "README.md"), "# API core smoke workspace\n");
+
+  const now = new Date().toISOString();
+  await writeStore({
+    prompts: [
+      {
+        id: "prompt-api-core-poem",
+        name: "核心冒烟任务：七言绝句",
+        body: "请以“新中国的美人”为题写一首七言绝句。",
+        tags: ["smoke"],
+        createdAt: now,
+        updatedAt: now
+      }
+    ],
+    environments: [
+      {
+        id: "env-api-dry-run",
+        name: "Dry Run",
+        client: "custom",
+        model: "simulator",
+        baseUrl: "",
+        reasoningEffort: "none",
+        commandTemplate: "node {simulator} {promptFile}",
+        envVars: {},
+        timeoutMs: 120000,
+        createdAt: now,
+        updatedAt: now
+      }
+    ],
+    states: [
+      {
+        id: "state-api-core-smoke",
+        name: "API Core Smoke Workspace",
+        path: sourceWorkspace,
+        folders: [sourceWorkspace],
+        description: "Temporary workspace under ./tmp for HTTP serial smoke.",
+        createdAt: now,
+        updatedAt: now
+      }
+    ],
+    devtoolsApiKeys: [],
+    devtoolsConnections: [],
+    runs: []
+  });
+
+  await withServer(createApp(), async (baseUrl) => {
+    process.env.LLM_STATUS_MACHINE_API = baseUrl;
+    const response = await fetch(`${baseUrl}/api/runs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        stateId: "state-api-core-smoke",
+        environmentId: "env-api-dry-run",
+        mode: "serial",
+        promptRuns: [{ promptId: "prompt-api-core-poem", count: 3 }]
+      })
+    });
+
+    assert.equal(response.status, 202);
+    const created = await response.json();
+    const run = await waitForRun(readStore, created.id);
+    assert.equal(run.status, "completed");
+    assert.equal(run.sessions.length, 3);
+    assert.equal(run.sessions.every((session) => session.artifacts.some((artifact) => artifact.name === "behavior-summary.md")), true);
+
+    const sessionId = run.sessions[0].id;
+    const stdout = await fetch(`${baseUrl}/api/sessions/${sessionId}/stdout`);
+    assert.equal(stdout.status, 200);
+    assert.match(await stdout.text(), /Dry-run simulator wrote/);
+
+    const metadata = await fetch(`${baseUrl}/api/sessions/${sessionId}/metadata`);
+    assert.equal(metadata.status, 200);
+    assert.equal((await metadata.json()).prompt.id, "prompt-api-core-poem");
+  });
 });
 
 test("copyWorkspace copies multiple source folders into one isolated workspace", async () => {

@@ -164,6 +164,11 @@ test("devtools API routes expose authenticated external agent workflow", async (
     const adminPayload = await admin.json();
     assert.equal(adminPayload.keys.some((key) => key.keyHash), false);
 
+    const storeResponse = await fetch(`${baseUrl}/api/store`);
+    assert.equal(storeResponse.status, 200);
+    const storePayload = await storeResponse.json();
+    assert.equal(storePayload.devtoolsApiKeys.some((key) => key.keyHash), false);
+
     const revoke = await fetch(`${baseUrl}/api/devtools/admin/keys/${createdKey.key.id}/revoke`, {
       method: "POST"
     });

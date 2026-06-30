@@ -102,6 +102,12 @@ function publicDevtoolsContext(store) {
   };
 }
 
+async function sendSessionFile(res, session, fileName, contentType) {
+  const filePath = path.join(path.dirname(session.workspace), fileName);
+  const content = await fs.readFile(filePath, "utf8").catch(() => "");
+  res.type(contentType).send(content);
+}
+
 export function createApp({
   getDirectoryPickerStatusImpl = getDirectoryPickerStatus,
   isDirectoryPickerRequestAllowedImpl = isDirectoryPickerRequestAllowed,
@@ -136,12 +142,18 @@ export function createApp({
 
     app.delete(`/api/${collection}/:id`, asyncRoute(async (req, res) => {
       const removed = await deleteItem(collection, req.params.id);
-      res.status(removed ? 204 : 404).end();
+      if (!removed) return res.status(404).json({ error: "Not found" });
+      res.status(204).end();
     }));
   }
 
   app.get("/api/store", asyncRoute(async (_req, res) => {
-    res.json(await readStore());
+    const store = await readStore();
+    res.json({
+      ...store,
+      devtoolsApiKeys: (store.devtoolsApiKeys || []).map(publicDevtoolsKey),
+      devtoolsConnections: (store.devtoolsConnections || []).map(publicDevtoolsConnection)
+    });
   }));
 
   app.get("/api/runs", asyncRoute(async (_req, res) => {
@@ -261,9 +273,25 @@ export function createApp({
   app.get("/api/devtools/sessions/:id/transcript", requireDevtools, asyncRoute(async (req, res) => {
     const match = await findSession(req.params.id);
     if (!match) return res.status(404).json({ error: "Not found" });
-    const transcriptPath = path.join(path.dirname(match.session.workspace), "transcript.ndjson");
-    const transcript = await fs.readFile(transcriptPath, "utf8").catch(() => "");
-    res.type("application/x-ndjson").send(transcript);
+    await sendSessionFile(res, match.session, "transcript.ndjson", "application/x-ndjson");
+  }));
+
+  app.get("/api/devtools/sessions/:id/stdout", requireDevtools, asyncRoute(async (req, res) => {
+    const match = await findSession(req.params.id);
+    if (!match) return res.status(404).json({ error: "Not found" });
+    await sendSessionFile(res, match.session, "stdout.txt", "text/plain");
+  }));
+
+  app.get("/api/devtools/sessions/:id/stderr", requireDevtools, asyncRoute(async (req, res) => {
+    const match = await findSession(req.params.id);
+    if (!match) return res.status(404).json({ error: "Not found" });
+    await sendSessionFile(res, match.session, "stderr.txt", "text/plain");
+  }));
+
+  app.get("/api/devtools/sessions/:id/metadata", requireDevtools, asyncRoute(async (req, res) => {
+    const match = await findSession(req.params.id);
+    if (!match) return res.status(404).json({ error: "Not found" });
+    await sendSessionFile(res, match.session, "metadata.json", "application/json");
   }));
 
   app.get("/api/devtools/sessions/:id/artifacts/:name", requireDevtools, asyncRoute(async (req, res) => {
@@ -343,9 +371,25 @@ export function createApp({
   app.get("/api/sessions/:id/transcript", asyncRoute(async (req, res) => {
     const match = await findSession(req.params.id);
     if (!match) return res.status(404).json({ error: "Not found" });
-    const transcriptPath = path.join(path.dirname(match.session.workspace), "transcript.ndjson");
-    const transcript = await fs.readFile(transcriptPath, "utf8").catch(() => "");
-    res.type("application/x-ndjson").send(transcript);
+    await sendSessionFile(res, match.session, "transcript.ndjson", "application/x-ndjson");
+  }));
+
+  app.get("/api/sessions/:id/stdout", asyncRoute(async (req, res) => {
+    const match = await findSession(req.params.id);
+    if (!match) return res.status(404).json({ error: "Not found" });
+    await sendSessionFile(res, match.session, "stdout.txt", "text/plain");
+  }));
+
+  app.get("/api/sessions/:id/stderr", asyncRoute(async (req, res) => {
+    const match = await findSession(req.params.id);
+    if (!match) return res.status(404).json({ error: "Not found" });
+    await sendSessionFile(res, match.session, "stderr.txt", "text/plain");
+  }));
+
+  app.get("/api/sessions/:id/metadata", asyncRoute(async (req, res) => {
+    const match = await findSession(req.params.id);
+    if (!match) return res.status(404).json({ error: "Not found" });
+    await sendSessionFile(res, match.session, "metadata.json", "application/json");
   }));
 
   app.get("/api/sessions/:id/artifacts/:name", asyncRoute(async (req, res) => {
@@ -402,8 +446,8 @@ export function createApp({
   });
 
   app.use((error, _req, res, _next) => {
-    console.error(error);
     const status = error.status || error.statusCode || 500;
+    if (status >= 500) console.error(error);
     const payload = { error: error.message || "Internal server error" };
     if (error.picker) payload.picker = error.picker;
     res.status(status).json(payload);

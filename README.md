@@ -155,6 +155,9 @@ POST   /api/runs
 GET    /api/runs/:id
 GET    /api/sessions/:id/diff
 GET    /api/sessions/:id/transcript
+GET    /api/sessions/:id/stdout
+GET    /api/sessions/:id/stderr
+GET    /api/sessions/:id/metadata
 GET    /api/sessions/:id/artifacts/:name
 GET    /api/events
 GET    /api/system/directory-picker
@@ -177,6 +180,9 @@ GET    /api/devtools/runs/:id
 POST   /api/devtools/runs
 GET    /api/devtools/sessions/:id/transcript
 GET    /api/devtools/sessions/:id/diff
+GET    /api/devtools/sessions/:id/stdout
+GET    /api/devtools/sessions/:id/stderr
+GET    /api/devtools/sessions/:id/metadata
 GET    /api/devtools/sessions/:id/artifacts/:name
 POST   /api/devtools/sessions/:id/events
 POST   /api/devtools/sessions/:id/artifacts
