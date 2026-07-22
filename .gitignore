@@ -8,3 +8,4 @@ data/states/*
 *.log
 .env
 tmp/
+.bensz-api

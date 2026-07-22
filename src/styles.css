@@ -1013,7 +1013,7 @@ button { cursor: pointer; }
   transition: background 0.16s ease, color 0.16s ease;
 }
 
-.iconButton:hover {
+.iconButton:hover:not(:disabled) {
   background: var(--ink);
   color: var(--lime);
 }
@@ -1275,12 +1275,14 @@ button { cursor: pointer; }
 .eventLine.stdout strong { color: var(--teal); }
 
 .eventLine.stderr,
-.eventLine.error {
+.eventLine.error,
+.eventLine.run_failed {
   background: linear-gradient(90deg, var(--cinnabar) 0 3px, #f4ded8 3px);
 }
 
 .eventLine.stderr strong,
-.eventLine.error strong { color: var(--cinnabar-ink); }
+.eventLine.error strong,
+.eventLine.run_failed strong { color: var(--cinnabar-ink); }
 
 .eventLine.session_started,
 .eventLine.session_finished,

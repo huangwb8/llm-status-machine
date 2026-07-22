@@ -68,7 +68,7 @@ flowchart LR
 API 收到请求后会：
 
 - 校验 Workspace、Model 和 Prompt 是否存在。
-- 创建一个状态为 `running` 的 run 记录。
+- 创建一个状态为 `queued` 的 run 记录。
 - 将 `{ runId }` 放入运行队列。
 - 立即返回 run，让前端可以进入查看状态。
 
@@ -200,6 +200,9 @@ runner 会在隔离 workspace 内创建 git 仓库，固定使用 `main` 分支�
 
 - `/api/sessions/:id/diff`
 - `/api/sessions/:id/transcript`
+- `/api/sessions/:id/stdout`
+- `/api/sessions/:id/stderr`
+- `/api/sessions/:id/metadata`
 - `/api/sessions/:id/artifacts/:name`
 
 ## 客户端主动上报
@@ -259,7 +262,7 @@ Raw key 只在创建时返回一次；存储层只保存 SHA-256 hash、key pref
 
 ## 失败处理
 
-session 失败通常来自命令非零退出、超时、目录复制失败、git 操作失败或客户端运行异常。runner 会尽量保留已经产生的 transcript、stdout、stderr 和错误事件，并把 session 标记为 `failed`。
+session 失败通常来自命令非零退出、超时、目录复制失败、git 操作失败或客户端运行异常。runner 会尽量保留已经产生的 transcript、stdout、stderr、metadata、diff 和错误事件，并把 session 标记为 `failed`。
 
 run 完成时会检查所有 session：
 

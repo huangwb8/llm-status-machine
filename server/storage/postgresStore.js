@@ -102,11 +102,6 @@ export function createPostgresStore({ connectionString = process.env.DATABASE_UR
       store[collection] = await readDocuments(collection);
     }
     store.runs = await readRuns();
-
-    const seed = createSeed(root);
-    for (const collection of DOCUMENT_COLLECTIONS) {
-      if (!store[collection].length) store[collection] = seed[collection];
-    }
     return store;
   }
 
@@ -333,7 +328,7 @@ export function createPostgresStore({ connectionString = process.env.DATABASE_UR
         const runResult = await client.query("select body from runs where id = $1 for update", [runId]);
         const run = runResult.rows[0]?.body;
         if (run) {
-          run.sessions = (run.sessions ?? []).map((item) => item.id === sessionId ? { ...session, events: item.events ?? [] } : item);
+          run.sessions = (run.sessions ?? []).map((item) => item.id === sessionId ? session : item);
           run.updatedAt = updatedAt;
           await client.query(
             "update runs set body = $2::jsonb, status = $3, updated_at = coalesce($4::timestamptz, now()) where id = $1",

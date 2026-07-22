@@ -56,6 +56,15 @@ async function listArtifacts(artifactsDir) {
   return files.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+async function writeSessionMetadata(sessionDir, metadata) {
+  await fs.writeFile(path.join(sessionDir, "metadata.json"), JSON.stringify(metadata, null, 2));
+}
+
+async function ensureSessionFile(filePath, fallback = "") {
+  const exists = await fs.access(filePath).then(() => true).catch(() => false);
+  if (!exists) await fs.writeFile(filePath, fallback);
+}
+
 async function findStoredSession(runId, sessionId) {
   return getSession(runId, sessionId);
 }
@@ -247,10 +256,7 @@ export async function runSession({ run, prompt, environment, state, iteration, s
     const files = snapshot.changed ? await changedFiles(workspace) : [];
     const stat = snapshot.changed ? await diffStat(workspace) : "";
     await fs.writeFile(path.join(sessionDir, "diff.patch"), patch);
-    await fs.writeFile(
-      path.join(sessionDir, "metadata.json"),
-      JSON.stringify({ prompt, environment, state, branch: SNAPSHOT_BRANCH, sourceWorkspace: sourceWorkspace || state.path, outputLabel }, null, 2)
-    );
+    await writeSessionMetadata(sessionDir, { prompt, environment, state, branch: SNAPSHOT_BRANCH, sourceWorkspace: sourceWorkspace || state.path, outputLabel });
     const artifacts = await listArtifacts(paths.artifacts);
 
     await patchSession(run.id, sessionId, (storedSession) => {
@@ -268,9 +274,21 @@ export async function runSession({ run, prompt, environment, state, iteration, s
     });
     await remember("session_finished", { ...result, changed: snapshot.changed, changedFiles: files, artifacts });
   } catch (error) {
+    const artifacts = await listArtifacts(paths.artifacts);
+    await ensureSessionFile(path.join(sessionDir, "diff.patch"));
+    await writeSessionMetadata(sessionDir, {
+      prompt,
+      environment,
+      state,
+      branch: SNAPSHOT_BRANCH,
+      sourceWorkspace: sourceWorkspace || state.path,
+      outputLabel,
+      error: error.stack || error.message
+    }).catch(() => {});
     await patchSession(run.id, sessionId, (storedSession) => {
       storedSession.status = "failed";
       storedSession.endedAt = timestamp();
+      storedSession.artifacts = artifacts;
     });
     await remember("error", error.stack || error.message);
   } finally {

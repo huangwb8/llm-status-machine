@@ -163,6 +163,11 @@ function updateDraftFolders(draft, folders) {
   return { ...draft, folders: uniqueFolders, path: uniqueFolders[0] || "" };
 }
 
+function normalizePromptCount(value) {
+  const count = Number(value);
+  return Number.isFinite(count) ? Math.max(1, Math.floor(count)) : 1;
+}
+
 function StatusPill({ status }) {
   return <span className={cx("pill", `pill-${status || "idle"}`)}>{status || "idle"}</span>;
 }
@@ -278,6 +283,7 @@ function ExperimentView({
   events
 }) {
   const sessions = selectedRun?.sessions || [];
+  const running = store.runs.some((run) => ["queued", "running"].includes(run.status));
 
   function togglePrompt(promptId) {
     setRunConfig((current) => {
@@ -298,7 +304,7 @@ function ExperimentView({
           eyebrow="Experiment"
           title="Run Bench"
           action={
-            <button className="primary" disabled={busy || !store.states.length || !store.environments.length || !runConfig.promptRuns.length} onClick={start}>
+            <button className="primary" disabled={busy || running || !store.states.length || !store.environments.length || !runConfig.promptRuns.length} onClick={start}>
               {busy ? <Loader2 className="spin" size={17} /> : <Play size={17} />}
               Start
             </button>
@@ -355,7 +361,7 @@ function ExperimentView({
                       value={selected?.count || 1}
                       disabled={!selected}
                       onChange={(event) => {
-                        const count = Math.max(1, Number(event.target.value || 1));
+                        const count = normalizePromptCount(event.target.value);
                         setRunConfig((current) => ({
                           ...current,
                           promptRuns: current.promptRuns.map((item) => (item.promptId === prompt.id ? { ...item, count } : item))
@@ -917,12 +923,16 @@ function App() {
   async function refresh() {
     const next = await api.get("/store");
     const promptIds = new Set(next.prompts.map((prompt) => prompt.id));
+    const envIds = new Set(next.environments.map((environment) => environment.id));
+    const stateIds = new Set(next.states.map((state) => state.id));
     setStore(next);
     setRunConfig((current) => {
       const promptRuns = current.promptRuns.filter((item) => promptIds.has(item.promptId));
       return promptRuns.length === current.promptRuns.length ? current : { ...current, promptRuns };
     });
     setActivePrompt((current) => (current && !promptIds.has(current) ? "" : current));
+    setActiveEnv((current) => (current && !envIds.has(current) ? "" : current));
+    setActiveState((current) => (current && !stateIds.has(current) ? "" : current));
     if (!initializedRef.current) {
       initializedRef.current = true;
       setActiveEnv(next.environments[0]?.id || "");
@@ -1004,6 +1014,23 @@ function App() {
   );
 
   useEffect(() => {
+    if (!store.runs.length) {
+      if (selectedRunId) setSelectedRunId("");
+      return;
+    }
+    if (!store.runs.some((run) => run.id === selectedRunId)) setSelectedRunId(store.runs[0].id);
+  }, [store.runs, selectedRunId]);
+
+  useEffect(() => {
+    const sessions = selectedRun?.sessions || [];
+    if (!sessions.length) {
+      if (selectedSessionId) setSelectedSessionId("");
+      return;
+    }
+    if (!sessions.some((session) => session.id === selectedSessionId)) setSelectedSessionId(sessions[0].id);
+  }, [selectedRun, selectedSessionId]);
+
+  useEffect(() => {
     if (!selectedSession) {
       setDiff("");
       setTranscript([]);
@@ -1022,6 +1049,9 @@ function App() {
     setError("");
     try {
       const item = activeId ? await api.patch(`/${collection}/${activeId}`, draft) : await api.post(`/${collection}`, draft);
+      if (collection === "prompts") setPromptDraft(item);
+      if (collection === "environments") setEnvDraft(item);
+      if (collection === "states") setStateDraft(item);
       setter(item.id);
       await refresh();
     } catch (err) {
@@ -1058,11 +1088,12 @@ function App() {
     setBusy(true);
     setError("");
     try {
+      if (running) return;
       const run = await api.post("/runs", {
         stateId: activeState || store.states[0]?.id,
         environmentId: activeEnv || store.environments[0]?.id,
         mode: runConfig.mode,
-        promptRuns: runConfig.promptRuns
+        promptRuns: runConfig.promptRuns.map((item) => ({ ...item, count: normalizePromptCount(item.count) }))
       });
       setSelectedRunId(run.id);
       setSelectedSessionId("");
@@ -1071,6 +1102,15 @@ function App() {
       setError(err.message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function refreshWithToast() {
+    setError("");
+    try {
+      await refresh();
+    } catch (err) {
+      setError(err.message);
     }
   }
 
@@ -1109,7 +1149,7 @@ function App() {
         <Dateline />
         <div className="topActions">
           <StatusPill status={running ? "running" : "ready"} />
-          <IconButton title="Refresh" onClick={() => refresh()}>
+          <IconButton title="Refresh" onClick={refreshWithToast}>
             <RefreshCcw size={17} />
           </IconButton>
         </div>

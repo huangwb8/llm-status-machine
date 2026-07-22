@@ -185,6 +185,104 @@ test("runs API validates missing environment as a client error", async () => {
   });
 });
 
+test("session file routes return 404 when captured files are missing", async () => {
+  process.env.DATA_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "llm-status-session-file-404-"));
+  process.env.STORAGE_DRIVER = "file";
+  process.env.QUEUE_DRIVER = "inline";
+  process.env.EVENT_BUS = "memory";
+
+  const { createApp } = await import("../server/index.js");
+  const { writeStore } = await import("../server/store.js");
+
+  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "llm-status-missing-file-workspace-"));
+  const now = new Date().toISOString();
+  await writeStore({
+    prompts: [],
+    environments: [],
+    states: [],
+    devtoolsApiKeys: [],
+    devtoolsConnections: [],
+    runs: [
+      {
+        id: "run-missing-file",
+        name: "Missing file run",
+        status: "completed",
+        sessions: [
+          {
+            id: "session-missing-file",
+            runId: "run-missing-file",
+            status: "completed",
+            workspace: path.join(workspace, "workspace"),
+            events: []
+          }
+        ],
+        createdAt: now,
+        updatedAt: now
+      }
+    ]
+  });
+
+  await withServer(createApp(), async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/sessions/session-missing-file/metadata`);
+    assert.equal(response.status, 404);
+    assert.equal((await response.json()).error, "Session file not found");
+  });
+});
+
+test("failed sessions still write metadata and diff files", async () => {
+  process.env.DATA_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "llm-status-runner-failure-files-"));
+  process.env.STORAGE_DRIVER = "file";
+  process.env.QUEUE_DRIVER = "inline";
+  process.env.EVENT_BUS = "memory";
+  process.env.LLM_STATUS_MACHINE_API = "";
+
+  const { startRun } = await import("../server/runner.js");
+  const { readStore, writeStore } = await import("../server/store.js");
+
+  const missingWorkspace = path.join(os.tmpdir(), `llm-status-missing-workspace-${Date.now()}`);
+  const now = new Date().toISOString();
+  await writeStore({
+    prompts: [{ id: "prompt-fail", name: "Prompt", body: "Do it", tags: [], createdAt: now, updatedAt: now }],
+    environments: [
+      {
+        id: "env-fail",
+        name: "Dry Run",
+        client: "custom",
+        model: "simulator",
+        baseUrl: "",
+        reasoningEffort: "none",
+        commandTemplate: "node {simulator} {promptFile}",
+        envVars: {},
+        timeoutMs: 120000,
+        createdAt: now,
+        updatedAt: now
+      }
+    ],
+    states: [{ id: "state-fail", name: "Missing Workspace", path: missingWorkspace, folders: [missingWorkspace], description: "", createdAt: now, updatedAt: now }],
+    devtoolsApiKeys: [],
+    devtoolsConnections: [],
+    runs: []
+  });
+
+  const created = await startRun({
+    stateId: "state-fail",
+    environmentId: "env-fail",
+    mode: "serial",
+    promptRuns: [{ promptId: "prompt-fail", count: 1 }]
+  });
+  const run = await waitForRun(readStore, created.id);
+  assert.equal(run.status, "failed");
+  assert.equal(run.sessions.length, 1);
+  assert.equal(run.sessions[0].status, "failed");
+
+  const sessionDir = path.dirname(run.sessions[0].workspace);
+  const metadata = JSON.parse(await fs.readFile(path.join(sessionDir, "metadata.json"), "utf8"));
+  const diff = await fs.readFile(path.join(sessionDir, "diff.patch"), "utf8");
+  assert.equal(metadata.prompt.id, "prompt-fail");
+  assert.match(metadata.error, /ENOENT|no such file/i);
+  assert.equal(diff, "");
+});
+
 test("runs API serial smoke completes three dry-run sessions", async () => {
   process.env.DATA_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "llm-status-runner-api-smoke-"));
   process.env.STORAGE_DRIVER = "file";

@@ -176,6 +176,18 @@ test("postgres storage persists updates to seed-backed environments", async () =
   );
 });
 
+test("postgres aggregate store honors tombstoned seed documents", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "llm-status-postgres-tombstone-store-"));
+  const store = createPostgresStore({ root, pool: createFakeDocumentPool() });
+
+  await store.deleteItem("environments", "env-codex");
+  await store.deleteItem("environments", "env-claude");
+  await store.deleteItem("environments", "env-dry-run");
+
+  assert.deepEqual(await store.listCollection("environments"), []);
+  assert.deepEqual((await store.readStore()).environments, []);
+});
+
 test("postgres storage lists runs with hydrated sessions and events", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "llm-status-postgres-runs-"));
   const store = createPostgresStore({

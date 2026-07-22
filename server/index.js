@@ -104,7 +104,13 @@ function publicDevtoolsContext(store) {
 
 async function sendSessionFile(res, session, fileName, contentType) {
   const filePath = path.join(path.dirname(session.workspace), fileName);
-  const content = await fs.readFile(filePath, "utf8").catch(() => "");
+  let content;
+  try {
+    content = await fs.readFile(filePath, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return res.status(404).json({ error: "Session file not found" });
+    throw error;
+  }
   res.type(contentType).send(content);
 }
 
