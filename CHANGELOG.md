@@ -41,6 +41,8 @@
 
 ### Fixed（修复）
 
+- 修复 Docker/headless Linux 环境缺少 `zenity` 时 Workspace 文件夹按钮被禁用、导致无法通过界面新建工作区的问题；现在按钮会打开受 `WORKSPACES_TARGET`/`WORKSPACES_MOUNT` 根目录约束的 API 目录浏览器，选中后自动填入路径与名称，同时保留原生选择器和手动输入流程。
+- 更新锁定的兼容依赖版本，修复 `shell-quote`、Vite、`body-parser` 等依赖链中的已公开安全漏洞，使生产依赖审计恢复为 0 项漏洞。
 - 修复前后端 session 文件契约不一致的问题：缺失 `metadata`、`diff`、`stdout/stderr` 等记录文件时 API 不再返回 200 空内容，而是返回 404；runner 异常失败时也会尽力写出 `metadata.json` 与 `diff.patch`，方便前端和自动化脚本准确区分“无变更”和“记录缺失”。
 - 修复 Postgres 聚合 `/api/store` 在 seed 记录全部 tombstone 后又回填默认 seed 的问题，使 `/api/store` 与集合接口返回一致；同时修复 Postgres session 更新写回 run body 时可能保留旧事件数组的问题。
 - 修复前端运行状态和选中状态一致性问题：保存后草稿立即同步后端返回值，手动刷新失败会显示 toast，已删除或变化后的 run/session 会回写有效选中 id，已有 run queued/running 时禁止重复点击 Start。

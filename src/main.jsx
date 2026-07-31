@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Activity,
+  ArrowUp,
   Bot,
   Braces,
   Check,
@@ -25,7 +26,8 @@ import {
   Sparkles,
   TerminalSquare,
   Trash2,
-  Wrench
+  Wrench,
+  X
 } from "lucide-react";
 import "./styles.css";
 
@@ -611,43 +613,58 @@ function WorkspaceView({
   remove,
   busy,
   directoryPicker,
-  pickWorkspaceFolder
+  pickWorkspaceFolder,
+  browseWorkspaceDirectories
 }) {
   const [selectingFolder, setSelectingFolder] = useState(false);
-  const folderInputRef = useRef(null);
+  const [directoryBrowser, setDirectoryBrowser] = useState(null);
+  const [directoryBrowserError, setDirectoryBrowserError] = useState("");
   const pickerAvailable = directoryPicker?.available !== false;
   const folders = normalizeDraftFolders(stateDraft);
 
-  function focusFolderInput() {
-    if (activeState) {
-      setActiveState("");
-      setStateDraft(blankState);
+  function addFolder(selectedPath) {
+    const nextFolders = [...folders, selectedPath];
+    setStateDraft(updateDraftFolders(
+      {
+        ...stateDraft,
+        name: stateDraft.name || folderNameFromPath(selectedPath)
+      },
+      nextFolders
+    ));
+  }
+
+  async function browseDirectory(directoryPath = "") {
+    setSelectingFolder(true);
+    setDirectoryBrowserError("");
+    try {
+      setDirectoryBrowser(await browseWorkspaceDirectories(directoryPath));
+    } catch (error) {
+      setDirectoryBrowserError(error.message);
+    } finally {
+      setSelectingFolder(false);
     }
-    requestAnimationFrame(() => folderInputRef.current?.focus());
   }
 
   async function pickFolder() {
     if (!pickerAvailable) {
-      focusFolderInput();
+      setDirectoryBrowser({ root: "", path: "", parent: null, directories: [] });
+      await browseDirectory();
       return;
     }
 
     setSelectingFolder(true);
     try {
       const selectedPath = await pickWorkspaceFolder();
-      if (selectedPath) {
-        const nextFolders = [...folders, selectedPath];
-        setStateDraft(updateDraftFolders(
-          {
-            ...stateDraft,
-            name: stateDraft.name || folderNameFromPath(selectedPath)
-          },
-          nextFolders
-        ));
-      }
+      if (selectedPath) addFolder(selectedPath);
     } finally {
       setSelectingFolder(false);
     }
+  }
+
+  function chooseBrowsedDirectory() {
+    if (!directoryBrowser?.path) return;
+    addFolder(directoryBrowser.path);
+    setDirectoryBrowser(null);
   }
 
   function setFoldersFromText(value) {
@@ -679,17 +696,16 @@ function WorkspaceView({
       <Field label="Folders">
         <div className="pathPicker">
           <TextArea
-            ref={folderInputRef}
             rows={Math.max(3, Math.min(6, folders.length || 3))}
             placeholder="/absolute/path/to/workspace"
             value={folders.join("\n")}
             onChange={(event) => setFoldersFromText(event.target.value)}
           />
-          <IconButton title="Choose folder" disabled={busy || selectingFolder || !pickerAvailable} onClick={pickFolder}>
+          <IconButton title={pickerAvailable ? "Choose folder" : "Browse folders"} disabled={busy || selectingFolder} onClick={pickFolder}>
             {selectingFolder ? <Loader2 className="spin" size={17} /> : <FolderOpen size={17} />}
           </IconButton>
         </div>
-        {!pickerAvailable && <p className="fieldHint warning">{directoryPicker.message}</p>}
+        {!pickerAvailable && <p className="fieldHint">Browse folders mounted on the API host, or enter an absolute path.</p>}
         {folders.length > 1 && (
           <div className="folderList">
             {folders.map((folder) => (
@@ -710,6 +726,58 @@ function WorkspaceView({
         <Database size={16} />
         Save Workspace
       </button>
+      {directoryBrowser && (
+        <div className="dialogBackdrop" onMouseDown={() => setDirectoryBrowser(null)}>
+          <section
+            className="directoryDialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="directory-dialog-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header className="directoryDialogHeader">
+              <div>
+                <span className="eyebrow">API HOST</span>
+                <h3 id="directory-dialog-title">Choose workspace folder</h3>
+              </div>
+              <IconButton title="Close folder browser" onClick={() => setDirectoryBrowser(null)}>
+                <X size={17} />
+              </IconButton>
+            </header>
+            <div className="directoryPath" title={directoryBrowser.path || "Loading workspace root"}>
+              {directoryBrowser.path || "Loading workspace root…"}
+            </div>
+            <div className="directoryToolbar">
+              <button className="secondary mini" disabled={!directoryBrowser.parent || selectingFolder} onClick={() => browseDirectory(directoryBrowser.parent)}>
+                <ArrowUp size={15} />
+                Up one level
+              </button>
+              <span>Root: {directoryBrowser.root || "…"}</span>
+            </div>
+            <div className="directoryList" aria-busy={selectingFolder}>
+              {selectingFolder && <div className="directoryEmpty"><Loader2 className="spin" size={18} /> Loading folders…</div>}
+              {!selectingFolder && directoryBrowser.directories.map((directory) => (
+                <button key={directory.path} onClick={() => browseDirectory(directory.path)}>
+                  <Folder size={17} />
+                  <span>{directory.name}</span>
+                  <ChevronRight size={15} />
+                </button>
+              ))}
+              {!selectingFolder && !directoryBrowser.directories.length && !directoryBrowserError && (
+                <div className="directoryEmpty">No subfolders. You can select this folder.</div>
+              )}
+              {directoryBrowserError && <div className="inlineError">{directoryBrowserError}</div>}
+            </div>
+            <footer className="directoryDialogFooter">
+              <button className="secondary mini" onClick={() => setDirectoryBrowser(null)}>Cancel</button>
+              <button className="primary mini" disabled={!directoryBrowser.path || selectingFolder} onClick={chooseBrowsedDirectory}>
+                <Check size={15} />
+                Use this folder
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
     </CollectionEditor>
   );
 }
@@ -1131,6 +1199,11 @@ function App() {
     }
   }
 
+  async function browseWorkspaceDirectories(directoryPath = "") {
+    const query = directoryPath ? `?path=${encodeURIComponent(directoryPath)}` : "";
+    return api.get(`/system/directories${query}`);
+  }
+
   const running = store.runs.some((run) => ["queued", "running"].includes(run.status));
   const activeViewMeta = views.find((view) => view.id === activeView);
 
@@ -1224,6 +1297,7 @@ function App() {
             busy={busy}
             directoryPicker={directoryPicker}
             pickWorkspaceFolder={pickWorkspaceFolder}
+            browseWorkspaceDirectories={browseWorkspaceDirectories}
           />
         )}
         {activeView === "devtools" && (

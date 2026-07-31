@@ -15,6 +15,7 @@ import { recordAgentEvent, startRun, subscribe, writeAgentArtifact } from "./run
 import { createConnection, disconnectConnection, heartbeatConnection, requestTerminateConnection } from "./devtoolsConnections.js";
 import { createDevtoolsKey, requireDevtoolsKey, revokeDevtoolsKey } from "./devtoolsAuth.js";
 import { getDirectoryPickerStatus, selectDirectory } from "./systemDialog.js";
+import { listWorkspaceDirectories } from "./directoryBrowser.js";
 import { createStateFromDirectory, normalizeWorkspaceState, workspaceFoldersFromState } from "./workspaceStates.js";
 import { isDirectoryPickerRequestAllowed } from "./localRequest.js";
 
@@ -118,6 +119,7 @@ export function createApp({
   getDirectoryPickerStatusImpl = getDirectoryPickerStatus,
   isDirectoryPickerRequestAllowedImpl = isDirectoryPickerRequestAllowed,
   isDevtoolsAdminRequestAllowedImpl = isDevtoolsAdminRequestAllowed,
+  listWorkspaceDirectoriesImpl = listWorkspaceDirectories,
   selectDirectoryImpl = selectDirectory
 } = {}) {
   const app = express();
@@ -352,6 +354,14 @@ export function createApp({
     }
 
     res.json(await selectDirectoryImpl({ title: req.body?.title || "Select workspace folder" }));
+  }));
+
+  app.get("/api/system/directories", asyncRoute(async (req, res) => {
+    if (!isDirectoryPickerRequestAllowedImpl(req)) {
+      return res.status(403).json({ error: "Workspace directories are only available from this machine." });
+    }
+
+    res.json(await listWorkspaceDirectoriesImpl({ requestedPath: req.query.path }));
   }));
 
   app.post("/api/states/from-directory", asyncRoute(async (req, res) => {

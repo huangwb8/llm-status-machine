@@ -904,6 +904,131 @@ button { cursor: pointer; }
   color: var(--ink-2);
 }
 
+.dialogBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(26, 23, 20, 0.56);
+}
+
+.directoryDialog {
+  width: min(680px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  display: grid;
+  grid-template-rows: auto auto auto minmax(180px, 1fr) auto;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--ink);
+  box-shadow: 8px 8px 0 rgba(26, 23, 20, 0.32);
+  background: var(--paper-card);
+  color: var(--ink);
+}
+
+.directoryDialogHeader,
+.directoryToolbar,
+.directoryDialogFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.directoryDialogHeader h3 {
+  margin: 4px 0 0;
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.directoryPath {
+  min-width: 0;
+  overflow: hidden;
+  padding: 10px 12px;
+  border: 1px solid var(--ink);
+  background: var(--paper-2);
+  color: var(--ink-soft);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.directoryToolbar span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.directoryList {
+  min-height: 180px;
+  overflow-y: auto;
+  border-block: 1px solid var(--rule);
+  background: var(--paper);
+}
+
+.directoryList > button {
+  width: 100%;
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 18px;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+
+.directoryList > button:hover,
+.directoryList > button:focus-visible {
+  background: color-mix(in srgb, var(--lime) 18%, var(--paper));
+  outline: none;
+}
+
+.directoryList > button span {
+  overflow: hidden;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.directoryList > button svg:last-child {
+  justify-self: end;
+  color: var(--muted);
+}
+
+.directoryEmpty {
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  text-align: center;
+}
+
+.directoryDialogFooter {
+  justify-content: flex-end;
+}
+
+.directoryDialogFooter .primary.mini {
+  justify-self: auto;
+}
+
 .select {
   appearance: none;
   background-image:
@@ -1588,4 +1713,16 @@ button { cursor: pointer; }
   }
 
   .sectionHead h2 { font-size: 32px; }
+
+  .dialogBackdrop { padding: 12px; }
+
+  .directoryDialog {
+    max-height: calc(100vh - 24px);
+    padding: 14px;
+  }
+
+  .directoryToolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
