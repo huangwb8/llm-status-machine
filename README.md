@@ -1,276 +1,159 @@
 # LLM Status Machine
 
-A local experiment console for running prompts against LLM coding clients and preserving the full behavior trail: prompt, environment, stdout/stderr, transcript, artifacts, workspace snapshot, git commit, changed files, and patch diff.
+LLM Status Machine 是一个 Python 3.12+ 本地命令行实验台。它把一次从明确 workspace baseline 开始的完整 Harness 调用视为一个 episode，固定实际 CLI runtime，并把 Prompt、原始输出、事件、工作区前后状态、Git diff、artifact、outcome 和版本指纹封存为可校验的 RawBundle。
 
-## What It Does
+项目首版专注单机 CLI，不再依赖 React、Express、Node.js、Postgres、Redis 或 BullMQ。
 
-- Manage reusable prompts.
-- Manage LLM environments as Models, including Codex CLI, Claude Code, or any custom command.
-- Register Workspace states as one or more local folders.
-- Use the Experiment bench to connect Prompts, Models, and Workspace into repeatable runs.
-- Run selected prompts once or many times in serial or parallel mode.
-- In serial mode, copy `state-i` into an isolated workspace, run one prompt attempt, then use that output as `state-i+1` for the next attempt.
-- In parallel mode, keep attempts independent by copying each session from the selected initial Workspace.
-- Initialize git inside each session workspace on a single `main` branch, commit the initial state, run the client, commit the result, and store the diff.
-- Persist every session transcript as newline-delimited JSON plus `stdout.txt`, `stderr.txt`, metadata, artifacts, and patch files.
-- Expose a DevTools External Agent API for trusted tools to observe runs, start experiments, and write session events.
-
-## Run Locally
+## 快速开始
 
 ```bash
-npm install
-npm run dev
+uv sync --frozen --extra test
+uv run lsm init .
+uv run lsm study validate study.example.yml
+uv run lsm study compile study.example.yml .lsm/plans/example.jsonl --json
+uv run lsm run start .lsm/plans/example.jsonl --data-root .lsm --json
 ```
 
-Open the Vite URL shown in the terminal, usually `http://localhost:5173`.
-
-The API listens on `http://localhost:4317`.
-
-To keep dependencies outside the repository on this machine:
+直接运行核心验收：
 
 ```bash
-npm run deps:link
-npm ci --cache /Volumes/2T01/Test/llm-status-machine/.npm-cache
+uv run pytest
+uv run lsm smoke --root tmp/core-smoke-manual --json
 ```
 
-If `node_modules` is already a local directory, rerun with `MIGRATE=1 npm run deps:link` to move it into `/Volumes/2T01/Test/llm-status-machine/node_modules` and replace it with a symlink.
+smoke 使用 Simulator、默认诗题和 `tmp` 下的 source workspace，以 `concurrency=1 + carry_forward` 连续运行 3 次。每个 episode 都会生成 transcript、raw stdout/stderr、metadata、artifact、初始/最终 manifest、Git commit、changed files、binary diff 和 seal。
 
-## Docker
+## 领域边界
 
-Build the local image:
+```text
+StudySpec -> compile/freeze -> TrialPlan -> Run -> Episode -> Attempt -> RawBundle
+RawBundle -> parser/scorer -> versioned evaluation/export
+```
+
+- `concurrency` 只控制同时运行数。
+- `state_policy` 独立控制 workspace 拓扑：普通重复默认 `independent`；明确的状态传递使用 `carry_forward`。
+- `HarnessSurface`、`RuntimeBuild`、`ModelEndpoint`、`ExecutionProfile` 与 `WorkspaceFixture` 分开配置。
+- 计划只能引用绝对 runtime 路径及冻结的 SHA-256；执行前会重新校验。
+- 自定义 Harness 使用 argv 数组和 `create_subprocess_exec`，不接受 shell 模板。
+- source workspace 永不直接执行或初始化 Git。
+- 评分写在 bundle 外，不能改写 sealed RawBundle。
+
+详细过程见 [docs/how-it-works.md](docs/how-it-works.md)，架构裁决见 [docs/adr/0001-python-cli-core.md](docs/adr/0001-python-cli-core.md)。
+
+## CLI
+
+主要命令组：
+
+- `lsm init` / `lsm doctor`：初始化项目并检查运行条件。
+- `lsm harness`：列出 adapter、probe、锁定或下载 exact runtime。
+- `lsm prompt`：lint、render 和 freeze Prompt revision。
+- `lsm workspace snapshot`：生成可复核 baseline manifest。
+- `lsm study`：validate、estimate 和 compile 稳定 JSONL TrialPlan。
+- `lsm run`：执行冻结计划、查询状态和 reconcile 中断的 run。
+- `lsm episode`：读取事件、stdout、diff，并验证 bundle seal。
+- `lsm evaluate`：在不改写原始证据的前提下重评分。
+- `lsm export`：导出 JSONL、CSV 或可携带 tar.gz。
+- `lsm store`：从自描述 run/episode manifest 重建 SQLite 索引并校验证据。
+- `lsm legacy`：只读盘点、验证和导入两种旧 run 目录布局。
+
+所有状态查询和自动化入口均提供稳定的 `--json` 输出。
+
+## StudySpec 示例
+
+`lsm init` 会生成可直接运行的 `study.example.yml`。关键字段如下：
+
+```yaml
+schema_version: 1
+name: simulator-example
+seed: 0
+repeats: 3
+concurrency: 1
+state_policy: carry_forward
+design: full_factorial
+prompts:
+  - id: poem
+    body: 请以“新中国的美人”为题写一首七言绝句。
+workspace:
+  path: /absolute/path/to/workspace
+runtime:
+  provider: simulator
+  surface: simulator
+  requested: builtin
+  version: "3.12.x"
+  executable: /absolute/path/to/python
+  sha256: <frozen executable digest>
+  platform: darwin-arm64
+  version_output: Python 3.12.x
+endpoint:
+  model_id: simulator
+  provider: local
+profile:
+  config_mode: workspace_native
+  research_mode: ecological
+  timeout_seconds: 120
+```
+
+同一 frozen spec、workspace baseline 与 seed 会得到字节一致的 `plan.jsonl`。`latest`、宿主 `PATH` 或未展开矩阵不会进入可执行计划。
+
+## Harness runtime
+
+内置 surface：
+
+- `simulator`
+- `codex_exec_cli`
+- `claude_print_cli`
+- `custom_command`
+
+先把宿主 CLI 解析为绝对路径和精确版本，再将 runtime manifest 放入 StudySpec：
 
 ```bash
-docker build -f deploy/Dockerfile -t llm-status-machine:local .
+uv run lsm harness lock \
+  --surface codex_exec_cli \
+  --executable /absolute/path/to/codex \
+  --version 0.144.0 \
+  --output .lsm/codex-0.144.0.json
 ```
 
-Run the single-container file-storage profile:
+`unmanaged` runtime 会显式标记不可完全复现。`harness fetch` 支持 URL + SHA-256 的内容寻址缓存和 offline 缺失即失败；OCI runtime identity 可在 schema 中记录 digest，但容器隔离能力仍取决于实际 user、mount、network 和 capability 配置。
+
+凭据只通过 `profile.env_allowlist` 引用宿主环境变量名；计划、launch metadata 和日志不保存 secret 值。
+
+## 数据布局
+
+```text
+.lsm/
+  index.sqlite3
+  plans/
+  runs/<run-id>/
+    run.json
+    episodes/<episode-id>/
+      episode.json
+      workspace/
+      attempts/attempt-1/raw-bundle/
+      evaluations/
+```
+
+SQLite 仅作 WAL 索引；删除索引后可用 `lsm store reindex` 从文件系统 manifest 重建。未 seal 或四类 execution outcome 未全部满足约束的 episode 永不标记为 `completed`。
+
+## Legacy 迁移
+
+旧 `data/` 和运行中的旧 Docker volumes 不做就地升级：
 
 ```bash
-docker compose --project-directory . -f deploy/docker-compose.file.yml up --build
-curl http://localhost:4317/api/health
+uv run lsm legacy inventory data --json
+uv run lsm legacy validate data --json
+uv run lsm legacy import data --data-root .lsm --json
 ```
 
-Run the full stack with Postgres, Redis, API, and worker:
+importer 同时识别 `<run>/<session-id>` 和 `<run>/state-N`，保留 observed metadata；缺失 runtime/model 保持 `unknown`。详见 [docs/migration-from-node.md](docs/migration-from-node.md)。
+
+## 开发与发布
 
 ```bash
-cp .env.example .env
-docker compose --project-directory . -f deploy/docker-compose.yml up --build
-curl http://localhost:4317/api/health
+make sync
+make test
+make smoke
+make build
 ```
 
-The full stack uses:
-
-- `STORAGE_DRIVER=postgres`
-- `QUEUE_DRIVER=redis`
-- `EVENT_BUS=redis`
-- `DATABASE_URL=postgres://...`
-- `REDIS_URL=redis://...`
-
-The app and worker share `/app/data` for run files. Workspace state paths are validated from the API host or container. In Docker, `WORKSPACES_MOUNT` is the host directory and `WORKSPACES_TARGET` is its container mount point; when you enter a host path under `WORKSPACES_MOUNT`, the API stores the matching container-visible path so runs can copy it normally. By default `./examples` is mounted read-write at `/workspaces/examples`, so the bundled dry-run state uses `/workspaces/examples/buggy-js`. For real projects, set `WORKSPACES_MOUNT=/host/projects`; you may then register either `/host/projects/project-a` or the container path `/workspaces/examples/project-a`. Set `WORKSPACES_TARGET=/workspaces/github` if you prefer a different container path, and set `WORKSPACES_MOUNT_MODE=ro` only when the source folder should be read-only.
-
-The Workspace folder button is guarded as a local-machine action. When the API host supports a native dialog, the button opens that picker. In Docker or headless Linux environments without a GUI picker, it opens an in-app directory browser rooted at `WORKSPACES_TARGET`, or `WORKSPACES_MOUNT` when no target is configured. The fallback only exposes directories already accessible to the API host, so Docker users must still mount host projects into the container; manual absolute path entry remains available. Open the app through `http://localhost:4317` when using Docker port mapping. To intentionally allow remote browser sessions to browse or trigger dialogs on the server machine, set `DIRECTORY_PICKER_ALLOW_REMOTE=1`.
-
-Codex and Claude CLIs are not installed in the base image. Dry Run and custom commands work out of the box; real LLM clients require extending the image or mounting the CLI, credentials, and workspaces yourself.
-
-## Worker Mode
-
-Local development defaults to a single API process:
-
-```bash
-STORAGE_DRIVER=file QUEUE_DRIVER=inline EVENT_BUS=memory npm run start
-```
-
-For multi-process execution, run migrations once and start the API plus worker:
-
-```bash
-DATABASE_URL=postgres://... npm run db:migrate
-STORAGE_DRIVER=postgres QUEUE_DRIVER=redis EVENT_BUS=redis REDIS_URL=redis://localhost:6379 npm run start
-STORAGE_DRIVER=postgres QUEUE_DRIVER=redis EVENT_BUS=redis REDIS_URL=redis://localhost:6379 npm run worker
-```
-
-The Docker entrypoint runs the Postgres migration automatically when `STORAGE_DRIVER=postgres`; set `RUN_DB_MIGRATIONS=0` to disable that behavior.
-
-## Command Templates
-
-Each environment has a shell command template. Supported placeholders:
-
-- `{prompt}`: shell-escaped prompt text
-- `{promptRaw}`: raw prompt text
-- `{promptFile}`: path to a prompt text file
-- `{model}`: configured model
-- `{baseUrl}`: configured base URL
-- `{reasoningEffort}`: configured reasoning value
-- `{workspace}`: isolated session workspace
-- `{simulator}`: bundled dry-run simulator
-
-Examples:
-
-```bash
-codex exec --model {model} --sandbox danger-full-access {prompt}
-claude -p {prompt} --model {model}
-node {simulator} {promptFile}
-```
-
-When `baseUrl` is set, the runner also exports `OPENAI_BASE_URL` and `ANTHROPIC_BASE_URL` for the child process. Custom environment variables can be stored in the environment object through the API.
-
-Every child process also receives:
-
-- `LLM_STATUS_MACHINE_API`: local API base URL, defaulting to `http://localhost:4317`
-- `LLM_STATUS_MACHINE_RUN_ID`: active run id
-- `LLM_STATUS_MACHINE_SESSION_ID`: active session id
-- `LLM_STATUS_MACHINE_BRANCH`: snapshot branch name, always `main`
-- `LLM_STATUS_MACHINE_WORKSPACE`: isolated workspace path
-- `LLM_STATUS_MACHINE_ARTIFACTS_DIR`: directory for extra run artifacts
-
-## DevTools
-
-Models is where LLM client capacity is configured: client type, model name, base URL, command template, timeout, and environment variables.
-
-DevTools is a controlled API entrance for trusted external AI/Agent tools. It does not provide model inference capacity. A local user can create or revoke DevTools keys in the UI; external tools call `/api/devtools/*` with `X-Devtools-Key`.
-
-The legacy `/api/agent/*` endpoints remain the in-session callback surface for a running Codex, Claude Code, or custom client. The DevTools API is broader: it supports connection lifecycle, read-only context, run creation, run/session reads, and authenticated session event/artifact writes.
-
-## API
-
-```bash
-GET    /api/store
-GET    /api/prompts
-POST   /api/prompts
-PATCH  /api/prompts/:id
-DELETE /api/prompts/:id
-
-GET    /api/environments
-POST   /api/environments
-PATCH  /api/environments/:id
-DELETE /api/environments/:id
-
-GET    /api/states
-POST   /api/states
-PATCH  /api/states/:id
-DELETE /api/states/:id
-POST   /api/states/from-directory
-
-GET    /api/runs
-POST   /api/runs
-GET    /api/runs/:id
-GET    /api/sessions/:id/diff
-GET    /api/sessions/:id/transcript
-GET    /api/sessions/:id/stdout
-GET    /api/sessions/:id/stderr
-GET    /api/sessions/:id/metadata
-GET    /api/sessions/:id/artifacts/:name
-GET    /api/events
-GET    /api/system/directory-picker
-
-GET    /api/devtools/ping
-GET    /api/devtools/admin
-POST   /api/devtools/admin/keys
-POST   /api/devtools/admin/keys/:id/revoke
-POST   /api/devtools/admin/connections/:id/terminate
-
-POST   /api/devtools/connect
-POST   /api/devtools/heartbeat
-POST   /api/devtools/disconnect
-GET    /api/devtools/context
-GET    /api/devtools/prompts
-GET    /api/devtools/models
-GET    /api/devtools/workspaces
-GET    /api/devtools/runs
-GET    /api/devtools/runs/:id
-POST   /api/devtools/runs
-GET    /api/devtools/sessions/:id/transcript
-GET    /api/devtools/sessions/:id/diff
-GET    /api/devtools/sessions/:id/stdout
-GET    /api/devtools/sessions/:id/stderr
-GET    /api/devtools/sessions/:id/metadata
-GET    /api/devtools/sessions/:id/artifacts/:name
-POST   /api/devtools/sessions/:id/events
-POST   /api/devtools/sessions/:id/artifacts
-
-POST   /api/agent/events
-POST   /api/agent/artifacts
-GET    /api/system/directories
-POST   /api/system/select-directory
-```
-
-Directory picker status returns the API host capability without opening a dialog:
-
-```json
-{
-  "available": false,
-  "platform": "linux",
-  "reason": "missing-command",
-  "command": "zenity",
-  "message": "Native directory picker is unavailable because zenity is not installed on the API host."
-}
-```
-
-`GET /api/system/directories` provides the headless/Docker fallback. It lists subdirectories under the configured workspace root, rejects traversal outside that root, and returns `403` to disallowed remote browser sessions. `POST /api/system/select-directory` returns `403` when the browser session is not allowed to trigger host dialogs. When the native picker is unavailable it returns `409` with `{ "error": "...", "picker": { ... } }`.
-
-Workspace state keeps `path` as a compatibility field for the first folder. New state data can also include `folders`, an array of absolute directory paths. `POST /api/states`, `PATCH /api/states/:id`, and `POST /api/states/from-directory` validate that every folder exists and is a directory. When `WORKSPACES_MOUNT` and `WORKSPACES_TARGET` are configured, host paths below the mount are translated to container-visible paths before they are saved.
-
-DevTools smoke test:
-
-```bash
-curl http://localhost:4317/api/devtools/ping
-curl -H "X-Devtools-Key: $LLM_STATUS_MACHINE_DEVTOOLS_KEY" \
-  http://localhost:4317/api/devtools/context
-```
-
-Start a run:
-
-```bash
-curl -X POST http://localhost:4317/api/runs \
-  -H 'content-type: application/json' \
-  -d '{
-    "stateId": "state-buggy-js",
-    "environmentId": "env-dry-run",
-    "mode": "serial",
-    "promptRuns": [{ "promptId": "prompt-review", "count": 2 }]
-  }'
-```
-
-Running clients can add structured events:
-
-```bash
-curl -X POST http://localhost:4317/api/agent/events \
-  -H 'content-type: application/json' \
-  -d '{
-    "runId": "'$LLM_STATUS_MACHINE_RUN_ID'",
-    "sessionId": "'$LLM_STATUS_MACHINE_SESSION_ID'",
-    "type": "assistant_note",
-    "payload": "Observed flaky test before editing."
-  }'
-```
-
-## Data Layout
-
-- `data/store.json`: prompts, environments, states, run metadata in file-storage mode
-- `data/runs/<run>/state-N/workspace`: isolated working copy for a session output state
-- `data/runs/<run>/state-N/diff.patch`: captured code changes
-- `data/runs/<run>/state-N/metadata.json`: prompt/environment/state/branch/source snapshot
-- `data/runs/<run>/state-N/transcript.ndjson`: lifecycle events, stdout/stderr, and agent-written events
-- `data/runs/<run>/state-N/stdout.txt` and `stderr.txt`: raw process streams
-- `data/runs/<run>/state-N/artifacts`: optional extra files written by the client or API
-
-In Postgres mode, prompt/environment/state/run/session/event metadata is stored in Postgres. Session workspaces, diffs, transcripts, and artifacts still live under `data/runs` so large artifacts stay on the shared file volume.
-
-The runner copies each state into an isolated session workspace before executing a command. Single-folder states are copied as the workspace root. Multi-folder states are copied as sibling folders named after each source directory, so the client sees one isolated workspace containing all selected roots. Original state folders are mounted read-write by default so custom commands and local tooling can access them naturally, but normal run diffs are still captured from the isolated session workspace.
-
-## DockerHub Publish
-
-The DockerHub publish path is intentionally local and explicit:
-
-```bash
-DRY_RUN=1 make dockerhub-publish
-PUSH=0 ALLOW_DIRTY=1 SKIP_TESTS=1 make dockerhub-publish
-```
-
-Defaults:
-
-- `IMAGE=huangwb8/llm-status-machine`
-- `VERSION=$(node -p "require('./package.json').version")`
-- `PROFILE=amd64`
-- `PUSH=1`
-
-Stable versions publish `x.y.z`, `latest`, `x.y`, and `x` tags. Prerelease versions publish only the full version tag. The script checks Docker buildx, Docker login, SemVer, tag collisions, and a clean worktree unless `ALLOW_DIRTY=1` is set.
+应用版本只在 `src/llm_status_machine/version.py` 维护；RawBundle schema version 与应用版本分离。项目只提供本地 Python CLI，不维护容器镜像或容器发布链路。

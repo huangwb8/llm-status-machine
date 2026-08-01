@@ -1,22 +1,21 @@
 # LLM Status Machine - 项目指令
 
-本项目用于构建一个本地 LLM 行为实验台：用户可以配置 prompt、模型客户端环境与初始工作状态，批量启动 LLM 会话，并完整保留回复、事件流、文件改动、git 快照与 diff，供后续评估不同模型和客户端的行为模式。
+本项目用于构建一个本地 LLM 行为实验台：用户可以配置 Prompt revision、Harness/runtime、模型端点与 workspace fixture，编译不可变实验计划，批量启动 episode，并完整保留原始流、事件、文件改动、Git 快照、diff 与 seal，供后续评估不同系统条件的行为模式。
 
 ## 项目目标
 
 开发一个优雅、可本地运行的 LLM 行为记录与评估软件。它需要支持：
 
-- 管理可复用 prompts，并允许每个 prompt 设置重复次数。
-- 管理 LLM 固有环境参数，包括客户端、模型、思考强度、base URL、命令模板、超时与环境变量。
-- 管理多个工作状态，每个状态通常是一个包含待处理文件的本地文件夹。
-- 对选定状态批量运行一个或多个 prompts，支持串行与并行。
-- 像真实用户发起任务一样调用 Codex、Claude Code 或自定义命令。
-- 完整记录模型输出、事件流、工作区改动、git commit、diff、artifact 与元数据。
-- 提供本地 HTTP API，供前端、自动化脚本与运行中的 AI 客户端交互。
+- 管理可版本化、组合、渲染和冻结的 Prompt revisions。
+- 将 Harness surface、精确 runtime build、模型端点、执行 profile 与 workspace fixture 正交配置。
+- 将 StudySpec 编译为稳定 JSONL TrialPlan，支持串行、有界并行和明确的状态继承策略。
+- 像真实用户发起任务一样调用 pinned Codex、Claude Code、Simulator 或声明式自定义 argv。
+- 完整记录 raw stdout/stderr、事件流、工作区改动、Git commit、diff、artifact、outcome 与 seal。
+- 提供稳定 Python CLI 和 `--json` 自动化输出；HTTP API、Web UI 与云控制面不属于首版范围。
 
 ## 核心工作流
 
-当用户提出 Web 项目 相关需求时，按以下流程执行：
+当用户提出本项目软件开发需求时，按以下流程执行：
 
 ### 1. 任务理解
 
@@ -26,7 +25,7 @@
 
 ### 2. 执行流程
 
-功能开发 → 组件测试 → 构建部署 → 监控反馈
+功能开发 → 组件测试 → Python 构建 → 核心冒烟测试 → 监控反馈
 
 ### 3. 输出规范
 
@@ -36,8 +35,8 @@
 
 ## 核心冒烟测试
 
-- 项目可正常运转的最低标准：给定一个 Prompt、一个 Workspace（默认使用本仓库 `./tmp` 下的子目录）和一个 Model，能够以 `serial` 模式连续运行 3 次，并为每次 session 记录 transcript、stdout/stderr、artifact/metadata、工作区 git snapshot、changed files 与 diff，最终 run 状态为 `completed`。
-- 默认测试任务：Prompt 为 `请以“新中国的美人”为题写一首七言绝句。`；测试环境可使用 Dry Run/Simulator 或用户指定真实模型，但必须验证 3 次串行 session 都成功完成并生成记录。
+- 项目可正常运转的最低标准：给定一个 Prompt、一个 Workspace（默认使用本仓库 `./tmp` 下的子目录）和一个 pinned Runtime，能够以 `concurrency=1 + state_policy=carry_forward` 连续运行 3 次，并为每次 episode 记录 transcript、raw stdout/stderr、artifact/metadata、工作区 initial/final snapshot、Git commit、changed files、diff 与 seal，最终 run 状态为 `completed`。
+- 默认测试任务：Prompt 为 `请以“新中国的美人”为题写一首七言绝句。`；测试环境可使用 Simulator 或用户明确授权的真实模型，但必须验证 3 次串行 episode 都成功完成并生成记录。
 - 每次改动源代码、进行收尾准备交付前，必须运行项目自动化测试，并确认上述核心任务顺利跑通；若无法运行，必须在交付说明中明确原因、风险和补救方式。
 
 ## 项目目录约定
@@ -46,6 +45,8 @@
 - `./tests`：质检用测试脚本及相关软件结构
 - `./docs`：解释性文档、教程等非计划类文档
 - `./docs/plans`：AI 为解决特定问题而制定的计划文档
+- `./src/llm_status_machine`：Python 包源码；应用版本只在 `version.py` 维护
+- `./.lsm`：默认本地索引、计划与 RawBundle 数据根，不提交 Git
 
 ## 工程原则
 
@@ -84,7 +85,7 @@
 - 发现的所有问题必须全部解决，不留已知缺陷
 - 如遇疑问或存在更优方案，自主决定最优方案执行，不中断工作流询问用户
 - 不得破坏已有功能，确保最终成品正常、稳定、高效地工作
-- 源代码发生变更后，必须重新构建并部署 Docker 镜像，供用户审查变更效果
+- 源代码发生变更后，必须完成 Python 构建与核心冒烟测试，供用户审查变更效果
 
 ### 前端优化后质检
 

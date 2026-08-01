@@ -4,6 +4,23 @@
 
 ---
 
+基于 docs/plans/2026-07-31-python-cli-重构计划.md 重构源代码。所有问题都要解决。 如果工作时有疑问，或者有更好的方案，自己选个最优方案优化，不要问我。要保证最终成品能正常、稳定、高效地工作。
+
+---
+
+我准备将本项目彻底重构为基于python的命令行工具，它的使命是：基于Prompt系统地观察、评估LLM在Harness（比如Claude Code、OpenAI Codex）里的行为。 /Volumes/2T01/winE/PythonCloud/Agents/pipelines/deep_research/reports/Codex-Claude-Code-非交互命令行模式 里的介绍里可知，Codex和Claude Code的非交互命令行模式更加适应命令行的形式而不是IDE。我的要求如下：
+
+- 一个完全基于python的命令行工具
+- 对 Codex和Claude Code（或其它客户端，这个要专门设计一个Class来实现，这样以后有新的harness我也可以快速加进来）的非交互命令行模式 在工程上实现非常高级的操作，比如如何高效地异步、并行，如何高效地保存 LLM在Harness里的工作过程和工作结果
+- 对于Prompt也要有很多综合的、高级的操作，方便我进行各种实验
+- 可以随意使用多个不同的Harness版本，并且不能依赖于宿主机的Harness版本。我估计这个是需要借助uv之类的虚拟机或沙箱功能才能实现
+- 其它你觉得重要的功能
+- /Volumes/2T01/winE/PythonCloud/Agents/pipelines/deep_research/reports/LLM行为实验方法学调研 里一些已经发表的论文/项目。 它们的源代码、设计哲学你要充分学习； 了解现在研究的基本范式。
+
+你先制定一个重构计划我看一下。
+
+---
+
 本应用是否有可能：
 
 - 业务逻辑是线上的； 比如，用户需要访问某个网址才可以访问

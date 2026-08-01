@@ -6,6 +6,12 @@
 
 ### Added（新增）
 
+- 新增 Python 3.12+ `lsm` CLI、Typer/Rich 输出、Pydantic typed domain、稳定 JSONL TrialPlan、SQLite WAL 索引与可重建文件存储。
+- 新增 Simulator、Codex exec、Claude print 与声明式 Custom Command adapter；runtime manifest 固定绝对路径、版本、平台、probe 输出与 SHA-256。
+- 新增有界 asyncio runner、独立 workspace、POSIX 进程组终止、raw-first recorder、canonical event、四类 outcome、RawBundle seal 与不可变重评分。
+- 新增 Prompt lint/render/freeze、full factorial/matched pair/block 编译、legacy 两种目录布局 inventory/validate/import、JSONL/CSV/archive export。
+- 新增 Python 单元、性质、异步、集成与 CLI black-box 测试，覆盖独立/继承状态、失败、超时、非法 UTF-8、路径/命令边界、seal 与重索引。
+- 新增 Python 核心 ADR、legacy 盘点、Node 迁移指南及独立 Docker Compose 数据边界。
 - 新增 `docs/how-it-works.md`，说明应用从配置实验、生成执行计划、执行 session 到保存 transcript/diff/artifact 的完整工作过程。
 - 新增 Docker 多阶段构建、单容器文件存储 Compose 与完整 Postgres/Redis/API/worker Compose 栈，支持容器内健康检查和非 root 运行。
 - 新增 `STORAGE_DRIVER=file|postgres`、`QUEUE_DRIVER=inline|redis`、`EVENT_BUS=memory|redis`，并加入 Postgres migration、Redis/BullMQ run queue 与独立 worker 进程。
@@ -29,6 +35,10 @@
 
 ### Changed（变更）
 
+- 项目从 Node.js + Express + React/Vite Web 应用重构为 Python 3.12 本地 CLI；应用版本升级为 `0.2.0`，并与 schema version 分离。
+- `serial/parallel` 混合语义拆为独立的 `concurrency` 与 `state_policy`；默认统计单位从 Session 改为完整 Episode。
+- Docker 镜像改为多阶段 Python/uv 构建、构建时运行 pytest、非 root CLI runtime；Compose 使用全新 `lsm_py_data` volume，不复用旧栈。
+- Makefile、DockerHub 发布脚本、README、工作过程和项目指令统一改用 `uv`、pytest、Python build 与 CLI smoke。
 - Experiment 页面将 Run Bench 与 Execution Ledger 从左右并排调整为上下堆叠，减少宽屏下两块核心操作区域互相挤压。
 - Prompts/Models/Workspace 集合编辑器左侧记录列表改为紧凑索引条目，避免编辑区高度把记录卡片拉伸成大方格，并提高标题字号与选中态层级。
 - Workspace 页面移除顶部 `Add Local Folder` 快捷按钮，保留表单内目录选择按钮与 `Save Workspace` 作为唯一添加流程，减少重复入口造成的困惑。
@@ -41,6 +51,8 @@
 
 ### Fixed（修复）
 
+- 修复通用 `shell: true` 命令注入面、宿主 PATH 隐式版本漂移、无界并发、超时只终止直接子进程、parser 覆盖 raw evidence 和未 seal 仍可能完成的问题。
+- 修复 Simulator runtime 解引用虚拟环境解释器 symlink 后丢失已安装包的问题，并加入回归测试。
 - 修复 Docker/headless Linux 环境缺少 `zenity` 时 Workspace 文件夹按钮被禁用、导致无法通过界面新建工作区的问题；现在按钮会打开受 `WORKSPACES_TARGET`/`WORKSPACES_MOUNT` 根目录约束的 API 目录浏览器，选中后自动填入路径与名称，同时保留原生选择器和手动输入流程。
 - 更新锁定的兼容依赖版本，修复 `shell-quote`、Vite、`body-parser` 等依赖链中的已公开安全漏洞，使生产依赖审计恢复为 0 项漏洞。
 - 修复前后端 session 文件契约不一致的问题：缺失 `metadata`、`diff`、`stdout/stderr` 等记录文件时 API 不再返回 200 空内容，而是返回 404；runner 异常失败时也会尽力写出 `metadata.json` 与 `diff.patch`，方便前端和自动化脚本准确区分“无变更”和“记录缺失”。
@@ -65,6 +77,11 @@
 - 修复跨进程 artifact 写入的路径校验与 session 归属校验，避免伪造 run/session 时写入非 session artifact 目录。
 - 修复 Postgres 模式下 run/session/event 使用整库快照写入导致的并发覆盖风险，改为按 run/session/event 行级更新和 append。
 - 修复 Prompts 编辑时会被后台自动刷新覆盖的问题，并在删除 prompt 后同步清理 Experiment 中的对应选择。
+
+### Removed（移除）
+
+- 移除 React UI、Express API、DevTools HTTP API、Node simulator、Postgres/Redis/BullMQ 默认栈、npm/Vite 构建与 shell command template。
+- 移除 Dockerfile、Compose、DockerHub 发布脚本及对应 Makefile、文档和工程验收入口；项目仅保留本地 Python CLI 的测试、构建与核心冒烟流程。
 
 ## [1.0.0] - 2026-05-25
 
