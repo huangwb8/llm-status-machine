@@ -126,6 +126,10 @@ Run ──► Episode ──► Attempt ──► sealed RawBundle
                                       └──► evaluation（位于 bundle 外）
 ```
 
+![LLM Status Machine 原理图：从 StudySpec 冻结 TrialPlan，在隔离 episode 中执行并封存 RawBundle；评分和导出只能读取 sealed evidence。](docs/llm-status-machine-principle.jpg)
+
+*原理图：实验条件先冻结并在执行前复核；工作区与原始证据被隔离封存，评分与导出不改写 RawBundle。*
+
 一个 `StudySpec` 将本来容易混在一起的条件分开：
 
 - `prompts`：可版本化 Prompt revision，以及变量；
