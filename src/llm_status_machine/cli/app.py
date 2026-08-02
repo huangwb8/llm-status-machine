@@ -458,7 +458,10 @@ def store_verify(
 
 @legacy_app.command("inventory")
 def legacy_inventory(
-    root: Annotated[Path, typer.Argument()] = Path("data"),
+    root: Annotated[
+        Path,
+        typer.Argument(help="旧 Node/Web file store 的显式路径。"),
+    ],
     as_json: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
     _emit(inventory_legacy(root), as_json)
@@ -466,7 +469,10 @@ def legacy_inventory(
 
 @legacy_app.command("validate")
 def legacy_validate(
-    root: Annotated[Path, typer.Argument()] = Path("data"),
+    root: Annotated[
+        Path,
+        typer.Argument(help="旧 Node/Web file store 的显式路径。"),
+    ],
     as_json: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
     result = validate_legacy(root)
@@ -477,7 +483,10 @@ def legacy_validate(
 
 @legacy_app.command("import")
 def legacy_import(
-    source: Annotated[Path, typer.Argument()] = Path("data"),
+    source: Annotated[
+        Path,
+        typer.Argument(help="旧 Node/Web file store 的显式路径。"),
+    ],
     data_root: Path = Path(".lsm"),
     as_json: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:

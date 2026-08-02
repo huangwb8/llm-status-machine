@@ -1,5 +1,5 @@
-.venv
-node_modules
+.venv/
+node_modules/
 .python-version
 __pycache__/
 *.py[cod]
@@ -11,11 +11,8 @@ build/
 dist/
 *.egg-info/
 .DS_Store
-data/store.json
-data/runs
-data/states/*
-!data/states/.gitkeep
 .lsm/
+var/
 *.log
 .env
 tmp/

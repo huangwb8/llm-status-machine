@@ -51,3 +51,10 @@ def test_cli_black_box_help_and_doctor(tmp_path: Path) -> None:
     inventory = runner.invoke(app, ["legacy", "inventory", str(legacy), "--json"])
     assert inventory.exit_code == 0
     assert '"disk_episode_count": 0' in inventory.stdout
+
+
+def test_legacy_cli_requires_explicit_source_path() -> None:
+    runner = CliRunner()
+    for command in ("inventory", "validate", "import"):
+        result = runner.invoke(app, ["legacy", command])
+        assert result.exit_code == 2, result.output

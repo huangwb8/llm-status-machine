@@ -43,10 +43,15 @@
 
 - `./tmp`：临时文件与测试中间产物，可不定期清理
 - `./tests`：质检用测试脚本及相关软件结构
-- `./docs`：解释性文档、教程等非计划类文档
+- `./examples/agent-workspaces`：供 Harness 和示例实验使用的最小工作区 fixture
+- `./docs/architecture`：当前与未来架构说明
+- `./docs/migration`：迁移指南、盘点与核验材料
+- `./docs/history`：已失效但需要保留的开发背景
 - `./docs/plans`：AI 为解决特定问题而制定的计划文档
+- `./docs/plans/archive`：仅供追溯、不再指导当前实现的历史计划
 - `./src/llm_status_machine`：Python 包源码；应用版本只在 `version.py` 维护
 - `./.lsm`：默认本地索引、计划与 RawBundle 数据根，不提交 Git
+- `./var`：本地 legacy 数据等不可再生成状态，不提交 Git
 
 ## 工程原则
 
