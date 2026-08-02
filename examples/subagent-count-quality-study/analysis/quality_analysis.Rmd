@@ -1,0 +1,149 @@
+---
+title: "评估类 subagent 数量与软件开发质量"
+author: "Bensz Conan"
+date: "`r Sys.Date()`"
+params:
+  analysis_mode: "descriptive_pilot"
+  top_n: 3
+  q_cutoff: 0.05
+  min_sample_n: 3
+  interpret_top_n: 3
+  interpret_min_stratum_n: 3
+  interpret_min_consistent_prop: 0.70
+  interpret_min_boot_prop: 0.70
+  plot_run_dir: "../../../.bensz-api/task-20260801-1219-subagent-quality-study/bensz-rmd-rules/output"
+  plot_preview_dpi: 200
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    theme: default
+    highlight: tango
+    code_folding: show
+    includes:
+      after_body: "templates/liquid_glass_lightbox.html"
+    css: "templates/liquid_glass_theme.css"
+---
+
+```{r load-data, message=FALSE, warning=FALSE}
+# 目的：加载完整 episode 数据和预先计算的描述性统计
+# 输入：tmp/quality_analysis 下的两个 RDS 文件
+# 参数：analysis_mode 固定为 descriptive_pilot
+# 输出：processed_data、computation_results 与正文内联统计量
+if (!file.exists("00.Environment.R")) stop("Missing 00.Environment.R in analysis directory.")
+source("00.Environment.R")
+source("quality_analysis_functions.R")
+data_dir <- file.path("tmp", "quality_analysis")
+if (!dir.exists(data_dir)) stop("请先运行 quality_analysis.R 生成分析数据。")
+processed_data <- readRDS(file.path(data_dir, "processed_data.rds"))
+computation_results <- readRDS(file.path(data_dir, "computation_results.rds"))
+source(file.path("templates", "nature_colors.R"))
+source(file.path("templates", "nature_theme.R"))
+source(file.path("templates", "datatables_helper.R"))
+options(stringsAsFactors = FALSE)
+```
+
+## 数据概览
+
+下面的表格以 episode 为一行，保留 intention-to-treat 的计划 evaluator 数、实际完成数、oracle 质量分、运行成本和协议状态。没有把 subagent 或测试用例扩张为统计样本。
+
+```{r episode-table, message=FALSE, warning=FALSE}
+# 目的：展示未经阈值筛选的三条 episode 记录
+# 输入：processed_data
+# 参数：pageLength=3，完整呈现 pilot
+# 输出：可交互 episode 表
+render_dt_output(processed_data, n = nrow(processed_data), scrollX = TRUE, pageLength = 3)
+```
+
+当前数据结果显示，本次 pilot 共包含 `r nrow(processed_data)` 个 episode，每个计划条件各 `r min(table(processed_data$evaluator_count))` 次；端到端质量分位于 `r sprintf("%.1f", min(processed_data$quality_score))`–`r sprintf("%.1f", max(processed_data$quality_score))` 分之间，而超时瞬间保存的代码 oracle 分位于 `r sprintf("%.1f", min(processed_data$oracle_code_score))`–`r sprintf("%.1f", max(processed_data$oracle_code_score))` 分之间。实际运行位置按 evaluator 数为 `r paste(processed_data$evaluator_count[order(processed_data$order_position)], collapse = " → ")`，形成固定升序。**这三条记录只能描述当前 fixture 与当前时间窗中的个案差异**，不能把单次随机 rollout 当作稳定组均值，也不能把最后一组超时归因于 evaluator 数；后续若重复实验，应继续以 episode 为唯一统计单位、轮换顺序并保留失败记录。
+
+## 关键函数、参数与源代码位置
+
+| 分析过程/产物 | 关键函数/对象 | 关键参数 | 设置理由 | 源代码位置 |
+|---|---|---|---|---|
+| 盲化 oracle 评分 | `export_final_snapshot()` / `oracle_score()` | 六类预注册权重，总分满分 | 从 sealed final commit 导出并核对临时快照，评分先于 treatment 读取 | `r paste0("scripts/score_run.py:", 113)` |
+| episode 数据整理 | `utils::read.csv()` / `saveRDS()` | 每个 evaluator count 恰有一行 | pilot 的三个条件各运行一次，缺失或重复立即失败 | `r paste0("analysis/quality_analysis.R:", 12)` |
+| 描述性趋势 | `stats::lm()` / `stats::cor()` | `quality_score ~ evaluator_count` / Spearman | 仅量化三个观测的方向，不进行显著性推断 | `r paste0("analysis/quality_analysis.R:", 31)` |
+| 质量与成本作图 | `.q01_quality_plot()` / `.q01_cost_plot()` | x breaks 对应全部条件；质量轴覆盖满分范围 | 展示原始点，避免用平滑线或误导性误差条夸大单次/组 | `r paste0("analysis/quality_analysis_functions.R:", 19)` |
+
+## 软件质量
+
+质量图展示三个经交付门禁调整的原始分数：episode 只有端到端 completed 才保留 oracle code score，超时或失败按交付门禁归零。图形同时保存矢量 PDF 与用于视觉复核的 JPG，纵轴固定覆盖完整满分范围，避免视觉上夸大小差异。
+
+```{r quality-plot, message=FALSE, warning=FALSE, fig.width=7, fig.height=4.8, out.width="75%"}
+# 目的：比较 3/6/9 evaluator 条件的端到端交付质量分
+# 输入：processed_data
+# 参数：7×4.8 英寸、11 pt 基准字体、0–100 固定纵轴
+# 输出：quality-score.pdf、JPG 预览与 HTML 内图形
+quality_plot <- .q01_quality_plot(processed_data)
+figure_dir <- file.path("tmp", "quality_analysis", "figures")
+preview_dir <- params$plot_run_dir
+dir.create(figure_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(preview_dir, recursive = TRUE, showWarnings = FALSE)
+ggplot2::ggsave(file.path(figure_dir, "quality-score.pdf"), quality_plot, width = 7, height = 4.8, device = grDevices::cairo_pdf)
+ggplot2::ggsave(file.path(preview_dir, "quality-score.jpg"), quality_plot, width = 7, height = 4.8, dpi = params$plot_preview_dpi)
+quality_plot
+```
+
+结果解读：当前数据的最强信号是最高端到端质量分出现在 `r computation_results$best_row$evaluator_count[[1]]` 个 evaluator 条件，为 `r sprintf("%.1f", computation_results$best_row$quality_score[[1]])` 分；最高 evaluator 条件的交付分低于已完成条件，三个点的描述性线性斜率为每增加一个 evaluator `r sprintf("%+.2f", computation_results$quality_slope)` 分，Spearman 方向系数为 `r sprintf("%.2f", computation_results$quality_spearman)`。三组 sealed final commit 的代码 oracle 分范围仅为 `r sprintf("%.1f", min(processed_data$oracle_code_score))`–`r sprintf("%.1f", max(processed_data$oracle_code_score))`，表明**功能正确性出现天花板；本次固定升序 rollout 中没有观察到更多 evaluator 对应的额外正确性收益，且最后一组未完成交付**。当前只有 `r nrow(processed_data)` 个 episode，无法估计 CI 或 bootstrap 稳定性，且该差异与运行顺序完全混杂；可证伪的下一步是在冻结 Prompt、fixture 与 scorer 后轮换顺序、每臂至少重复 `r params$min_sample_n` 次，并检查该方向是否在时间区组内重复出现。
+
+## 质量构成
+
+各需求类别的分数用于定位质量差异来自基础 TTL、LRU、single-flight、取消/失败还是 invalidation race；类别权重在运行前固定，未根据结果调整。
+
+```{r category-table, message=FALSE, warning=FALSE}
+# 目的：展示每个 episode 的预注册类别得分
+# 输入：processed_data 中 score_ 前缀列
+# 参数：只选择 treatment、总分和类别分
+# 输出：可交互类别得分表
+category_columns <- grep("^score_", names(processed_data), value = TRUE)
+category_table <- processed_data[c("evaluator_count", "quality_score", "oracle_code_score", category_columns)]
+render_dt_output(category_table, n = nrow(category_table), scrollX = TRUE, pageLength = 3)
+```
+
+当前数据结果显示，三组代码 artifact 在预注册的 TTL、LRU、single-flight、取消与 invalidation race 类别上总分均达到 `r sprintf("%.1f", max(category_table$oracle_code_score))`，其中 invalidation race 已覆盖失效后的新请求世代，但端到端交付分最低为 `r sprintf("%.1f", min(category_table$quality_score))`。**代码正确不等于实验工作流按时完成**：9-evaluator 条件的正确代码在超时捕获时仍缺少完成的总结与终态协议；下一轮应保持同一类别权重，并同时把 completed 状态与类别得分作为不可替代的两个判据。
+
+## 执行成本
+
+运行时间包含 evaluator、总结、顶层实现和公开测试，是增加评估 agent 所附带成本的直接观察量。
+
+```{r cost-plot, message=FALSE, warning=FALSE, fig.width=7, fig.height=4.8, out.width="75%"}
+# 目的：比较三种 evaluator 数量的 episode 墙钟时间
+# 输入：processed_data
+# 参数：7×4.8 英寸、11 pt 基准字体
+# 输出：wall-time.pdf、JPG 预览与 HTML 内图形
+cost_plot <- .q01_cost_plot(processed_data)
+ggplot2::ggsave(file.path(figure_dir, "wall-time.pdf"), cost_plot, width = 7, height = 4.8, device = grDevices::cairo_pdf)
+ggplot2::ggsave(file.path(preview_dir, "wall-time.jpg"), cost_plot, width = 7, height = 4.8, dpi = params$plot_preview_dpi)
+cost_plot
+```
+
+结果解读：当前数据结果显示，最长 episode 是 `r computation_results$slowest_row$evaluator_count[[1]]` 个 evaluator 条件，耗时 `r sprintf("%.1f", computation_results$slowest_row$wall_seconds[[1]])` 秒；最短耗时为 `r sprintf("%.1f", min(processed_data$wall_seconds))` 秒，最长/最短时间比为 `r sprintf("%.2f", max(processed_data$wall_seconds) / min(processed_data$wall_seconds))`。最高 evaluator 条件比最低条件多完成 `r max(processed_data$completed_evaluators) - min(processed_data$completed_evaluators)` 份评估结果，却少获得 `r sprintf("%.1f", max(processed_data$quality_score) - min(processed_data$quality_score))` 分端到端质量；这一反向差异是需要复验的观察信号，**不能在固定升序、单次/组设计中解释为数量效应**。若要分离纯数量效应，需要轮换执行顺序并另做固定总 evaluator token 预算的实验，以质量分/千 token 和质量分/分钟作为共同判据。
+
+## 讨论与分析
+
+### 主要发现
+
+当前数据的最强信号是较低两个 evaluator 条件的端到端交付分均为 `r sprintf("%.1f", max(processed_data$quality_score))`，最高条件因超时为 `r sprintf("%.1f", min(processed_data$quality_score))`。当前数据同时显示，三组代码 oracle 分均为 `r sprintf("%.1f", max(processed_data$oracle_code_score))`，功能分没有随 evaluator 数增加。当前数据的描述性斜率为 `r sprintf("%+.2f", computation_results$quality_slope)` 分/evaluator，协议操纵通过的 episode 为 `r sum(processed_data$protocol_ok)`/`r nrow(processed_data)`；**本次固定升序 rollout 没有显示更多 evaluator 对应的代码正确性收益，并观察到最后一个 9-evaluator episode 未按时交付，但两者不能建立因果联系**。当前仅有 `r nrow(processed_data)` 个 episode，无法估计 CI 或 bootstrap 稳定性；requested count 与运行位置都须保留，不能删去超时条件。
+
+### 局限性
+
+每臂只有 `r min(table(processed_data$evaluator_count))` 次、只有一个 AsyncTTLCache fixture、所有 subagent 来自同一模型家族，结论同时受 rollout 随机性、时间漂移、API 限流、总结上下文负担和共享外部 Codex 配置影响。原 pilot 固定按 `r paste(processed_data$evaluator_count[order(processed_data$order_position)], collapse = " → ")` 运行，数量与顺序完全混杂；各条件还携带不同计算成本，因此当前斜率不是纯数量因果效应。隐藏测试虽在 episode workspace 外并采用预注册权重，仍只覆盖一个具体并发缓存契约，不能代表一般软件工程质量。
+
+### 可落地后续
+
+冻结本轮 Prompt、fixture、Codex build、parallel-vibe 公共 digest 与 scorer 后，使用预注册随机顺序并按时间区组轮换位置，把每臂扩展到至少 `r params$min_sample_n` 次；输入仍为同一 baseline，判据是原始 episode 分数、区组内方向一致性和宽区间效应估计，而不是把测试项当样本计算小 p 值。若成本允许，再增加 `r 2` 个难度相近但缺陷结构不同的 fixture，以任务为 block 检查数量效应能否跨任务复现。
+
+## 数字准确性验证
+
+| 数字描述 | 来源变量/计算 | 报告位置 |
+|---|---|---|
+| episode 数和每臂样本量 | `nrow(processed_data)` / `table(evaluator_count)` | 数据概览 |
+| 最高、最低交付分与代码分 | `quality_score` / `oracle_code_score` | 软件质量与质量构成 |
+| 描述性斜率与 Spearman 系数 | `stats::lm()` / `stats::cor(method="spearman")` | 软件质量 |
+| 最长与最短运行时间 | `which.max(wall_seconds)` / `min(wall_seconds)` | 执行成本 |
+| 协议通过数 | `sum(protocol_ok)` | 讨论与分析 |
+
+验证结论：正文关键数字均由当前 `processed_data` 或 `computation_results` 通过内联 R 动态嵌入；oracle 评分发生在 treatment 读取之前，评分对象由 sealed final commit 导出并与 sealed workspace manifest 逐文件核对，评分前后均验证 RawBundle seal；报告没有把 subagent、测试用例或发现条目当作独立统计样本。

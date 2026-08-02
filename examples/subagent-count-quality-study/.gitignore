@@ -1,0 +1,12 @@
+.lsm/
+.codex/
+.private/
+auth.json
+config.toml
+exports/
+*.tar.gz
+analysis/tmp/
+analysis/*_files/
+.DS_Store
+__pycache__/
+Rplots.pdf

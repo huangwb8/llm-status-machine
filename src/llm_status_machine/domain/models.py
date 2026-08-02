@@ -79,7 +79,8 @@ class ExecutionProfile(FrozenModel):
     terminate_grace_seconds: float = Field(default=3.0, ge=0)
     reasoning_effort: str | None = None
     network: Literal["inherit", "disabled"] = "inherit"
-    permissions: str = "workspace-write"
+    permissions: Literal["read-only", "workspace-write", "danger-full-access"] = "workspace-write"
+    ephemeral: bool = False
     env_allowlist: list[str] = Field(default_factory=list)
     custom_argv: list[str] = Field(default_factory=list)
     prompt_transport: Literal["argument", "stdin", "file"] = "argument"

@@ -6,6 +6,7 @@
 
 ### Added（新增）
 
+- 新增 `examples/subagent-count-quality-study/` 可复现实验，比较 Codex + GPT-5.6 Sol medium 工作流中 3、6、9 个评估类 subagent 的软件开发质量，并提供绑定 sealed final commit 的盲化 oracle 评分与 R Markdown 分析。
 - 新增 Python 3.12+ `lsm` CLI、Typer/Rich 输出、Pydantic typed domain、稳定 JSONL TrialPlan、SQLite WAL 索引与可重建文件存储。
 - 新增 Simulator、Codex exec、Claude print 与声明式 Custom Command adapter；runtime manifest 固定绝对路径、版本、平台、probe 输出与 SHA-256。
 - 新增有界 asyncio runner、独立 workspace、POSIX 进程组终止、raw-first recorder、canonical event、四类 outcome、RawBundle seal 与不可变重评分。
@@ -35,6 +36,8 @@
 
 ### Changed（变更）
 
+- 按生命周期收束仓库目录：迁移核验、架构、历史诉求、Node/Web 计划和 agent workspace fixture 分别归入稳定分类；legacy CLI 改为必须显式指定 source 路径，本地旧 file store 隔离到被忽略的 `var/legacy-node/`。
+- Codex adapter 现在把 execution profile 的 sandbox 权限、ephemeral 会话和 RawBundle artifact 写入目录落实到实际 argv；对暂时无法兑现的 config/research/network 组合会在启动前明确拒绝。
 - 项目从 Node.js + Express + React/Vite Web 应用重构为 Python 3.12 本地 CLI；应用版本升级为 `0.2.0`，并与 schema version 分离。
 - `serial/parallel` 混合语义拆为独立的 `concurrency` 与 `state_policy`；默认统计单位从 Session 改为完整 Episode。
 - Docker 镜像改为多阶段 Python/uv 构建、构建时运行 pytest、非 root CLI runtime；Compose 使用全新 `lsm_py_data` volume，不复用旧栈。
@@ -51,6 +54,7 @@
 
 ### Fixed（修复）
 
+- 修复 subagent 数量示例中评分现场 workspace、失效世代竞态漏测、scorer failure 列结构不稳定与固定升序复现实验设计问题；后续运行改用预注册非单调随机顺序，现有 pilot 明确降级为顺序混杂的描述性观察。
 - 修复通用 `shell: true` 命令注入面、宿主 PATH 隐式版本漂移、无界并发、超时只终止直接子进程、parser 覆盖 raw evidence 和未 seal 仍可能完成的问题。
 - 修复 Simulator runtime 解引用虚拟环境解释器 symlink 后丢失已安装包的问题，并加入回归测试。
 - 修复 Docker/headless Linux 环境缺少 `zenity` 时 Workspace 文件夹按钮被禁用、导致无法通过界面新建工作区的问题；现在按钮会打开受 `WORKSPACES_TARGET`/`WORKSPACES_MOUNT` 根目录约束的 API 目录浏览器，选中后自动填入路径与名称，同时保留原生选择器和手动输入流程。
@@ -80,6 +84,7 @@
 
 ### Removed（移除）
 
+- 移除已无消费者的旧 Node/Web 空目录、未引用图片、失效 workspace 配置和根目录 legacy `data/` 占位入口；历史数据原件仍保留在本地 `var/legacy-node/`。
 - 移除 React UI、Express API、DevTools HTTP API、Node simulator、Postgres/Redis/BullMQ 默认栈、npm/Vite 构建与 shell command template。
 - 移除 Dockerfile、Compose、DockerHub 发布脚本及对应 Makefile、文档和工程验收入口；项目仅保留本地 Python CLI 的测试、构建与核心冒烟流程。
 

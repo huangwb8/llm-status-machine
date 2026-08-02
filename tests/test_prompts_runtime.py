@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 from conftest import make_study
 
-from llm_status_machine.domain.models import ExecutionProfile, PromptRevision
-from llm_status_machine.harnesses.builtin import CustomCommandAdapter
+from llm_status_machine.domain.models import ExecutionProfile, ModelEndpoint, PromptRevision
+from llm_status_machine.harnesses.builtin import CodexAdapter, CustomCommandAdapter
 from llm_status_machine.prompts.core import freeze_prompt, lint_prompt, render_prompt
 from llm_status_machine.runtimes.providers import lock_runtime, simulator_runtime
 from llm_status_machine.study.compiler import compile_study
@@ -62,3 +62,77 @@ def test_custom_argv_must_match_frozen_runtime(source_workspace: Path, tmp_path:
     trial = compile_study(spec).trials[0]
     with pytest.raises(ValueError, match=r"argv\[0\]"):
         CustomCommandAdapter().build_launch(trial, tmp_path / "prompt.md", tmp_path / "artifacts")
+
+
+def test_codex_argv_enforces_profile_and_artifact_scope(
+    source_workspace: Path, tmp_path: Path
+) -> None:
+    runtime = simulator_runtime().model_copy(update={"surface": "codex_exec_cli"})
+    spec = make_study(
+        source_workspace,
+        runtime=runtime,
+        endpoint=ModelEndpoint(provider="openai", model_id="gpt-5.6-sol"),
+        profile=ExecutionProfile(
+            reasoning_effort="medium", permissions="workspace-write", ephemeral=True
+        ),
+    )
+    trial = compile_study(spec).trials[0]
+    artifacts = tmp_path / "artifacts"
+    launch = CodexAdapter().build_launch(trial, tmp_path / "prompt.md", artifacts)
+    assert launch.argv == [
+        runtime.executable,
+        "exec",
+        "--json",
+        "--model",
+        "gpt-5.6-sol",
+        "--sandbox",
+        "workspace-write",
+        "--add-dir",
+        str(artifacts),
+        "-c",
+        'model_reasoning_effort="medium"',
+        "--ephemeral",
+        "Do the task",
+    ]
+
+
+def test_codex_rejects_profile_controls_it_cannot_enforce(
+    source_workspace: Path, tmp_path: Path
+) -> None:
+    runtime = simulator_runtime().model_copy(update={"surface": "codex_exec_cli"})
+    spec = make_study(
+        source_workspace,
+        runtime=runtime,
+        profile=ExecutionProfile(network="disabled"),
+    )
+    trial = compile_study(spec).trials[0]
+    with pytest.raises(ValueError, match="cannot enforce network=disabled"):
+        CodexAdapter().build_launch(trial, tmp_path / "prompt.md", tmp_path / "artifacts")
+
+
+@pytest.mark.parametrize(
+    ("profile", "message"),
+    [
+        (ExecutionProfile(config_mode="hermetic"), "requires config_mode=workspace_native"),
+        (ExecutionProfile(research_mode="controlled"), "requires research_mode=ecological"),
+    ],
+)
+def test_codex_rejects_unsupported_profile_modes(
+    source_workspace: Path,
+    tmp_path: Path,
+    profile: ExecutionProfile,
+    message: str,
+) -> None:
+    runtime = simulator_runtime().model_copy(update={"surface": "codex_exec_cli"})
+    trial = compile_study(make_study(source_workspace, runtime=runtime, profile=profile)).trials[0]
+    with pytest.raises(ValueError, match=message):
+        CodexAdapter().build_launch(trial, tmp_path / "prompt.md", tmp_path / "artifacts")
+
+
+def test_codex_omits_ephemeral_when_disabled(source_workspace: Path, tmp_path: Path) -> None:
+    runtime = simulator_runtime().model_copy(update={"surface": "codex_exec_cli"})
+    trial = compile_study(
+        make_study(source_workspace, runtime=runtime, profile=ExecutionProfile(ephemeral=False))
+    ).trials[0]
+    launch = CodexAdapter().build_launch(trial, tmp_path / "prompt.md", tmp_path / "artifacts")
+    assert "--ephemeral" not in launch.argv

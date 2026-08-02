@@ -53,9 +53,27 @@ class CodexAdapter:
     capabilities = frozenset({"jsonl", "workspace-write", "sandbox", "model", "reasoning-effort"})
 
     def build_launch(self, trial: Trial, prompt_file: Path, artifacts_dir: Path) -> LaunchSpec:
-        argv = [trial.runtime.executable, "exec", "--json", "--model", trial.endpoint.model_id]
+        if trial.profile.config_mode != "workspace_native":
+            raise ValueError("codex_exec_cli currently requires config_mode=workspace_native")
+        if trial.profile.research_mode != "ecological":
+            raise ValueError("codex_exec_cli currently requires research_mode=ecological")
+        if trial.profile.network != "inherit":
+            raise ValueError("codex_exec_cli cannot enforce network=disabled")
+        argv = [
+            trial.runtime.executable,
+            "exec",
+            "--json",
+            "--model",
+            trial.endpoint.model_id,
+            "--sandbox",
+            trial.profile.permissions,
+            "--add-dir",
+            str(artifacts_dir),
+        ]
         if trial.profile.reasoning_effort:
             argv.extend(["-c", f'model_reasoning_effort="{trial.profile.reasoning_effort}"'])
+        if trial.profile.ephemeral:
+            argv.append("--ephemeral")
         argv.append(trial.actual_prompt)
         return LaunchSpec(
             argv,
