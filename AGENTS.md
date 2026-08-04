@@ -43,7 +43,6 @@
 
 - `./tmp`：临时文件与测试中间产物，可不定期清理
 - `./tests`：质检用测试脚本及相关软件结构
-- `./examples/agent-workspaces`：供 Harness 和示例实验使用的最小工作区 fixture
 - `./docs/architecture`：当前与未来架构说明
 - `./docs/migration`：迁移指南、盘点与核验材料
 - `./docs/history`：已失效但需要保留的开发背景

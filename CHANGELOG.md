@@ -36,7 +36,7 @@
 
 ### Changed（变更）
 
-- 按生命周期收束仓库目录：迁移核验、架构、历史诉求、Node/Web 计划和 agent workspace fixture 分别归入稳定分类；legacy CLI 改为必须显式指定 source 路径，本地旧 file store 隔离到被忽略的 `var/legacy-node/`。
+- 按生命周期收束仓库目录：迁移核验、架构、历史诉求和 Node/Web 计划分别归入稳定分类；legacy CLI 改为必须显式指定 source 路径，本地旧 file store 隔离到被忽略的 `var/legacy-node/`。
 - Codex adapter 现在把 execution profile 的 sandbox 权限、ephemeral 会话和 RawBundle artifact 写入目录落实到实际 argv；对暂时无法兑现的 config/research/network 组合会在启动前明确拒绝。
 - 项目从 Node.js + Express + React/Vite Web 应用重构为 Python 3.12 本地 CLI；应用版本升级为 `0.2.0`，并与 schema version 分离。
 - `serial/parallel` 混合语义拆为独立的 `concurrency` 与 `state_policy`；默认统计单位从 Session 改为完整 Episode。
@@ -84,6 +84,7 @@
 
 ### Removed（移除）
 
+- 移除无实际消费者的 `examples/agent-workspaces/buggy-js/` 通用 Harness 工作区样例及其活跃文档入口。
 - 移除已无消费者的旧 Node/Web 空目录、未引用图片、失效 workspace 配置和根目录 legacy `data/` 占位入口；历史数据原件仍保留在本地 `var/legacy-node/`。
 - 移除 React UI、Express API、DevTools HTTP API、Node simulator、Postgres/Redis/BullMQ 默认栈、npm/Vite 构建与 shell command template。
 - 移除 Dockerfile、Compose、DockerHub 发布脚本及对应 Makefile、文档和工程验收入口；项目仅保留本地 Python CLI 的测试、构建与核心冒烟流程。

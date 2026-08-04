@@ -255,7 +255,7 @@ uv run lsm export run <run-id> result.tar.gz --data-root .lsm --format archive
 
 - `src/llm_status_machine/`：当前 Python CLI 与领域实现；
 - `tests/`：自动化、集成与 CLI black-box 测试；
-- `examples/agent-workspaces/`：供 Harness 和示例实验使用的最小 workspace fixture；
+- `examples/`：独立、可复现的实验项目及其配套材料，不属于产品源码；
 - `docs/architecture/`、`docs/migration/`、`docs/history/`：分别保存架构方向、迁移核验材料与历史开发诉求；
 - `docs/plans/`：仍可执行的计划，`docs/plans/archive/node-web/` 仅供追溯旧 Node/Web 决策；
 - `.lsm/`、`tmp/`、`var/`：被忽略的实验数据、可再生成临时产物与本地 legacy 暂存。
