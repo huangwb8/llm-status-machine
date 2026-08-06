@@ -249,16 +249,15 @@ uv run lsm export run <run-id> result.tar.gz --data-root .lsm --format archive
 - `.lsm/` 的 RawBundle 可能包含 Prompt、模型输出和工作区内容；把它当作本地实验数据管理。
 - LSM 隔离 source workspace 与 episode 副本，但 native runtime、`uv` 和 CLI 自带 sandbox 都不等于完整安全隔离。需要强隔离时，请自行控制用户、挂载、网络、权限和资源。
 - 对于超时，POSIX 会先终止独立进程组，宽限后再强杀；即使失败也会尝试封存已有证据。
-- 旧 Node/Web 版本的数据只读导入，不做就地升级或双写。迁移命令必须显式指定旧数据路径，流程见 [迁移指南](docs/migration/from-node.md)。
 
 ## 仓库结构
 
 - `src/llm_status_machine/`：当前 Python CLI 与领域实现；
 - `tests/`：自动化、集成与 CLI black-box 测试；
 - `examples/`：独立、可复现的实验项目及其配套材料，不属于产品源码；
-- `docs/architecture/`、`docs/migration/`、`docs/history/`：分别保存架构方向、迁移核验材料与历史开发诉求；
-- `docs/plans/`：仍可执行的计划，`docs/plans/archive/node-web/` 仅供追溯旧 Node/Web 决策；
-- `.lsm/`、`tmp/`、`var/`：被忽略的实验数据、可再生成临时产物与本地 legacy 暂存。
+- `docs/architecture/`、`docs/history/`：分别保存架构方向与历史开发诉求；
+- `docs/plans/`：仍可执行的计划；
+- `.lsm/`、`tmp/`、`var/`：被忽略的实验数据与可再生成临时产物。
 
 ## 开发与验证
 

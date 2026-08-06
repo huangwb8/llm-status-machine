@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Removed（移除）
+
+- 移除已废弃的旧 Node/Web file-store 数据迁移 CLI、实现、测试、迁移资料和历史 Node/Web 计划；本地 `var/legacy-node/` 历史数据不再保留，并将应用版本升至 `1.0.0`。
+
 ### Added（新增）
 
 - 新增 `examples/subagent-count-quality-study/` 可复现实验，比较 Codex + GPT-5.6 Sol medium 工作流中 3、6、9 个评估类 subagent 的软件开发质量，并提供绑定 sealed final commit 的盲化 oracle 评分与 R Markdown 分析。

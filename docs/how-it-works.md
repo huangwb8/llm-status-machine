@@ -71,5 +71,5 @@ evaluation 写在 episode 的 `evaluations/`，包含 scorer version 和输入 b
 - 自定义命令不能以 shell 为入口，Prompt 中的 shell 元字符只是 argv 或 stdin 数据。
 - 计划必须包含 absolute executable 与 digest；宿主 PATH 只用于显式 discovery，不能在运行时替换 runtime。
 - 环境变量按名字 allowlist，launch metadata 只记录名字和 argv digest。
-- workspace、legacy 与 artifact 路径在访问前必须仍位于允许根目录。
+- workspace 与 artifact 路径在访问前必须仍位于允许根目录。
 - native runtime 和 uv 都不等同安全沙箱；确认性实验仍需实际控制网络、用户、文件权限和资源。

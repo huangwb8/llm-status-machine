@@ -50,7 +50,7 @@
 - `./docs/plans/archive`：仅供追溯、不再指导当前实现的历史计划
 - `./src/llm_status_machine`：Python 包源码；应用版本只在 `version.py` 维护
 - `./.lsm`：默认本地索引、计划与 RawBundle 数据根，不提交 Git
-- `./var`：本地 legacy 数据等不可再生成状态，不提交 Git
+- `./var`：本地不可再生成状态，不提交 Git
 
 ## 工程原则
 

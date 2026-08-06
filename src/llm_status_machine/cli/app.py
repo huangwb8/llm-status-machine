@@ -25,7 +25,6 @@ from llm_status_machine.domain.models import (
 from llm_status_machine.evaluation.scorer import score_episode
 from llm_status_machine.execution.runner import RunEngine
 from llm_status_machine.harnesses.base import list_adapters
-from llm_status_machine.legacy.importer import import_legacy, inventory_legacy, validate_legacy
 from llm_status_machine.prompts.core import freeze_prompt, lint_prompt, render_prompt
 from llm_status_machine.recording.bundle import resolve_bundle_path, validate_seal
 from llm_status_machine.runtimes.providers import (
@@ -50,7 +49,6 @@ episode_app = typer.Typer(no_args_is_help=True)
 evaluate_app = typer.Typer(no_args_is_help=True)
 export_app = typer.Typer(no_args_is_help=True)
 store_app = typer.Typer(no_args_is_help=True)
-legacy_app = typer.Typer(no_args_is_help=True)
 for name, subapp in (
     ("harness", harness_app),
     ("prompt", prompt_app),
@@ -61,7 +59,6 @@ for name, subapp in (
     ("evaluate", evaluate_app),
     ("export", export_app),
     ("store", store_app),
-    ("legacy", legacy_app),
 ):
     app.add_typer(subapp, name=name)
 
@@ -454,43 +451,6 @@ def store_verify(
     _emit({"valid": not failures, "failures": failures}, as_json)
     if failures:
         raise typer.Exit(1)
-
-
-@legacy_app.command("inventory")
-def legacy_inventory(
-    root: Annotated[
-        Path,
-        typer.Argument(help="旧 Node/Web file store 的显式路径。"),
-    ],
-    as_json: Annotated[bool, typer.Option("--json")] = False,
-) -> None:
-    _emit(inventory_legacy(root), as_json)
-
-
-@legacy_app.command("validate")
-def legacy_validate(
-    root: Annotated[
-        Path,
-        typer.Argument(help="旧 Node/Web file store 的显式路径。"),
-    ],
-    as_json: Annotated[bool, typer.Option("--json")] = False,
-) -> None:
-    result = validate_legacy(root)
-    _emit(result, as_json)
-    if not result["valid"]:
-        raise typer.Exit(1)
-
-
-@legacy_app.command("import")
-def legacy_import(
-    source: Annotated[
-        Path,
-        typer.Argument(help="旧 Node/Web file store 的显式路径。"),
-    ],
-    data_root: Path = Path(".lsm"),
-    as_json: Annotated[bool, typer.Option("--json")] = False,
-) -> None:
-    _emit(import_legacy(source, data_root), as_json)
 
 
 @app.command("smoke")

@@ -10,4 +10,4 @@
 - 引用文件用 Markdown 链接，必要时带行号：`[file.md:42](path/file.md#L42)`
 - 复杂任务用 TodoWrite；改代码前先读文件，优先精确编辑
 - 避免无关重构；修改 `AGENTS.md` 后更新 `CHANGELOG.md`
-- Python 开发统一使用 `uv sync --frozen --extra test`、`uv run pytest` 和 `uv run lsm`，不恢复旧 Node/Web 入口
+- Python 开发统一使用 `uv sync --frozen --extra test`、`uv run pytest` 和 `uv run lsm`
