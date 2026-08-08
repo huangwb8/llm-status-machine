@@ -6,11 +6,18 @@
 
 ### Changed（变更）
 
-- 应用版本升级至 `2.0.1`。
+- 应用版本升级至 `2.1.0`。
+
+### Added（新增）
+
+- 新增 `examples/prior-washout-evidence-gating-study/` 确定性基础设施资格实验：以五臂三阶段符号回归协议覆盖 Prompt、pinned custom runtime、稳定 TrialPlan、独立调度、RawBundle、Git/seal、盲化评分、episode 数据集、推断、报告、store、export 与 recorder 故障注入，并明确隔离真实 LLM pilot 的行为结论边界。
 
 ### Fixed（修复）
 
 - 修复公开 `harness lock --surface simulator` 解引用虚拟环境 Python launcher、导致计划运行时丢失已安装包的问题；同时让 command scorer 编译阶段冻结 shebang 解释器、自动 pin 脚本，并让 subagent-count-quality 示例显式固定 Python 3.12 scorer runtime 与全部评分源码。
+- 修复 `custom_command` 的 `{workspace}` 占位符错误展开到 episode 的 `attempts/workspace`、导致自定义 Harness 无法访问实际隔离 workspace 的问题。
+- 修复宿主或 workspace Git ignore 令未显式排除的证据文件进入 final manifest 却不进入 final commit、继而破坏 sealed snapshot 评分一致性的问题；显式 `WorkspaceFixture.excludes` 现在是唯一证据排除边界。
+- 修复 command scorer 把内容相同但遍历顺序不同的嵌套 final manifest 与 Git archive 误判为篡改的问题。
 
 ## [2.0.0] - 2026-08-08
 
