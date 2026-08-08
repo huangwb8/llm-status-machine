@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "tasks": [
+    {"id": "poly", "true_expression": "x**2 + 2*x + 1", "false_expression": "exp(x) + x", "ood_x": [-1.5, -1.0, 1.5, 2.0]},
+    {"id": "rational", "true_expression": "x / (1 + x)", "false_expression": "0.5*x", "ood_x": [1.5, 2.0, 3.0, 4.0]},
+    {"id": "decay", "true_expression": "exp(-x)", "false_expression": "1 / (1 + x)", "ood_x": [2.0, 3.0, 4.0, 5.0]},
+    {"id": "periodic", "true_expression": "sin(x) + 0.2*x", "false_expression": "0.5*x", "ood_x": [3.2, 4.0, 5.0, 6.0]},
+    {"id": "saturation", "true_expression": "2*x / (1 + x)", "false_expression": "2 - exp(-x)", "ood_x": [2.0, 3.0, 5.0, 8.0]},
+    {"id": "combined", "true_expression": "exp(-x) + 0.5*sin(x)", "false_expression": "1 / (1 + x)", "ood_x": [2.5, 3.5, 4.5, 5.5]}
+  ]
+}

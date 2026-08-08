@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "note": "真实 pilot 使用前复制为本地忽略的 nested-runtime.lock.json，并填写由 lsm harness lock 生成的完整 RuntimeBuild；不要提交凭据。",
+  "surface": "codex_exec_cli | claude_print_cli",
+  "runtime_build": null,
+  "model_endpoint": null
+}
+

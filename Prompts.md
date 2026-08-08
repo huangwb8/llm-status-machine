@@ -14,6 +14,10 @@ version=2.0.0
 
 ---
 
+基于 docs/plans/prior-washout-evidence-gating-study.md 在 ./examples 里设计一个实验，用于展示、检验最新项目代码的所有主要功能。这个过程中，如果确定源代码存在缺陷，可以优化。
+
+---
+
 以 examples/subagent-count-quality-study 为例，检验一下最新项目代码的所有主要功能，判断项目实际用于是否可以用于真实的Prompt工程研究； 目前本示例还是基于旧版项目。如果发现项目源代码有缺陷，请自主规划修复。
 
 ---
