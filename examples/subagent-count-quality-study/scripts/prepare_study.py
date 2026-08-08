@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import sys
 from pathlib import Path
 
 import yaml
@@ -43,6 +44,7 @@ def main() -> None:
     runtime = json.loads(args.runtime.read_text(encoding="utf-8"))
     scorer = (ROOT / "oracle_tests" / "lsm_scorer.py").resolve()
     oracle = (ROOT / "oracle_tests" / "score_cache.py").resolve()
+    scorer_python = Path(sys.executable).absolute()
     category_bounds = {
         "basic_ttl": 15,
         "lru_capacity": 15,
@@ -84,8 +86,8 @@ def main() -> None:
                     "id": "oracle",
                     "kind": "command",
                     "version": "async-ttl-cache-v2",
-                    "argv": [str(scorer)],
-                    "support_files": [{"path": str(oracle)}],
+                    "argv": [str(scorer_python), str(scorer)],
+                    "support_files": [{"path": str(scorer)}, {"path": str(oracle)}],
                     "include_prompt": False,
                     "repetitions": 1,
                     "aggregation": "mean",

@@ -56,10 +56,14 @@ def lock_runtime(
     version_args: list[str] | None = None,
     reproducible: bool = False,
 ) -> RuntimeBuild:
-    resolved = executable.expanduser().resolve(strict=True)
-    if not resolved.is_file() or not os.access(resolved, os.X_OK):
-        raise ValueError(f"runtime is not executable: {resolved}")
-    version_output = probe_version(resolved, version_args)
+    locked_executable = (
+        executable.expanduser().absolute()
+        if surface == "simulator"
+        else executable.expanduser().resolve(strict=True)
+    )
+    if not locked_executable.is_file() or not os.access(locked_executable, os.X_OK):
+        raise ValueError(f"runtime is not executable: {locked_executable}")
+    version_output = probe_version(locked_executable, version_args)
     if requested_version not in version_output:
         raise ValueError(f"version mismatch: expected {requested_version!r}, observed {version_output!r}")
     return RuntimeBuild(
@@ -67,8 +71,8 @@ def lock_runtime(
         surface=surface,
         requested=requested_version,
         version=requested_version,
-        executable=str(resolved),
-        sha256=sha256_file(resolved),
+        executable=str(locked_executable),
+        sha256=sha256_file(locked_executable),
         platform=_platform_identity(),
         version_output=version_output,
         reproducible=reproducible,

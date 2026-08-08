@@ -1,6 +1,6 @@
 """Application and independently versioned data contracts."""
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 
 STUDY_SCHEMA_VERSION = 2
 TRIAL_PLAN_SCHEMA_VERSION = 2

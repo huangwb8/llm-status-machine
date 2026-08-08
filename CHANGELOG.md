@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Changed（变更）
+
+- 应用版本升级至 `2.0.1`。
+
+### Fixed（修复）
+
+- 修复公开 `harness lock --surface simulator` 解引用虚拟环境 Python launcher、导致计划运行时丢失已安装包的问题；同时让 command scorer 编译阶段冻结 shebang 解释器、自动 pin 脚本，并让 subagent-count-quality 示例显式固定 Python 3.12 scorer runtime 与全部评分源码。
+
 ## [2.0.0] - 2026-08-08
 
 ### Removed（移除）

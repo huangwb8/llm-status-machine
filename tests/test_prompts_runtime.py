@@ -40,6 +40,22 @@ def test_simulator_runtime_preserves_environment_interpreter() -> None:
     assert result.returncode == 0, result.stderr.decode()
 
 
+def test_simulator_runtime_lock_preserves_environment_interpreter() -> None:
+    executable = Path(__import__("sys").executable)
+    observed = subprocess.run(
+        [str(executable), "--version"], check=True, capture_output=True, text=True
+    ).stdout.strip()
+    version = observed.split()[-1]
+
+    runtime = lock_runtime(surface="simulator", executable=executable, requested_version=version)
+
+    assert runtime.executable == str(executable.absolute())
+    result = subprocess.run(
+        [runtime.executable, "-c", "import llm_status_machine"], check=False, capture_output=True
+    )
+    assert result.returncode == 0, result.stderr.decode()
+
+
 def test_runtime_lock_requires_matching_exact_version(tmp_path: Path) -> None:
     executable = Path(__import__("sys").executable)
     observed = subprocess.run(

@@ -97,7 +97,7 @@ LLM agent 的输出不是一个静态答案：它会读取文件、调用工具�
 
 主指标是交付门禁调整后的 100 分质量分：只有 episode 端到端 `completed` 才保留 oracle code score，超时或失败记 0。未调整的 `oracle_code_score` 同时保留，用来区分“代码产物正确”与“软件交付完成”。例如一个 episode 可能已写出能通过 oracle 的 commit，却在 summary、记录或终态协议上超时；此时 oracle 分仍有诊断价值，但主指标为 0，因为用户无法获得完整、可审计的交付。
 
-`score_run.py` 从 sealed `workspace.final.json` 指定的 Git commit 导出临时快照，并逐文件核对内容后评分，不读取可变现场代码。`pilot.csv` 是 episode 级 tidy 数据；`pilot.manifest.json` 进一步保留 scorer 版本、bundle digest、sealed workspace digest、实际被评分的 commit/content digest 和逐测试证据。若需要复查异常结果，应先检查 RawBundle 中的 transcript、manifest、seal 和 diff，再解读分数。
+`score_run.py` 从 sealed `workspace.final.json` 指定的 Git commit 导出临时快照，并逐文件核对内容后评分，不读取可变现场代码。通用 scorer 由 `prepare_study.py` 显式固定当前 Python 3.12 launcher，并把 adapter 与 oracle 一并作为 support files 冻结，避免评分时由宿主 `python3` 别名改变解释器。`pilot.csv` 是 episode 级 tidy 数据；`pilot.manifest.json` 进一步保留 scorer 版本、bundle digest、sealed workspace digest、实际被评分的 commit/content digest 和逐测试证据。若需要复查异常结果，应先检查 RawBundle 中的 transcript、manifest、seal 和 diff，再解读分数。
 
 ## 当前 pilot 能说明什么，不能说明什么
 

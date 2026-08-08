@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import itertools
 import random
+import shlex
+import shutil
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
@@ -71,17 +73,52 @@ def _pin_file(value: PinnedFile | None) -> PinnedFile | None:
     return value.model_copy(update={"path": str(path), "sha256": observed})
 
 
+def _command_launcher(path: Path) -> tuple[Path, list[str]]:
+    requested = path.expanduser().absolute()
+    with requested.open("rb") as handle:
+        first_line = handle.readline(4096)
+    if not first_line.startswith(b"#!"):
+        return requested, []
+    try:
+        command = shlex.split(first_line[2:].decode("utf-8", "strict").strip())
+    except (UnicodeDecodeError, ValueError) as error:
+        raise ValueError(f"invalid command scorer shebang: {requested}") from error
+    if not command:
+        raise ValueError(f"empty command scorer shebang: {requested}")
+    interpreter = Path(command[0])
+    interpreter_args = command[1:]
+    if interpreter.name == "env":
+        if interpreter_args[:1] == ["-S"]:
+            interpreter_args = interpreter_args[1:]
+        if not interpreter_args or interpreter_args[0].startswith("-") or "=" in interpreter_args[0]:
+            raise ValueError(f"unsupported command scorer env shebang: {requested}")
+        discovered = shutil.which(interpreter_args[0])
+        if not discovered:
+            raise ValueError(f"command scorer interpreter not found: {interpreter_args[0]}")
+        interpreter = Path(discovered).absolute()
+        interpreter_args = interpreter_args[1:]
+    elif not interpreter.is_absolute():
+        raise ValueError(f"command scorer shebang interpreter must be absolute: {requested}")
+    else:
+        interpreter = interpreter.expanduser().absolute()
+    if interpreter.name.lower() in {"sh", "bash", "zsh", "cmd", "powershell", "pwsh"}:
+        raise ValueError("command scorer cannot invoke a shell")
+    if not interpreter.is_file():
+        raise ValueError(f"command scorer interpreter not found: {interpreter}")
+    return interpreter, [*interpreter_args, str(requested)]
+
+
 def _freeze_evaluation(evaluation: EvaluationSpec) -> EvaluationSpec:
     scorers: list[ScorerSpec] = []
     for scorer in evaluation.scorers:
         if scorer.kind != "command":
             scorers.append(scorer)
             continue
-        executable = Path(scorer.argv[0]).resolve(strict=True)
+        executable, launcher_args = _command_launcher(Path(scorer.argv[0]))
         observed = sha256_file(executable)
         if scorer.executable_sha256 and scorer.executable_sha256 != observed:
             raise ValueError(f"scorer executable digest mismatch: {executable}")
-        argv = [str(executable), *scorer.argv[1:]]
+        argv = [str(executable), *launcher_args, *scorer.argv[1:]]
         support = [item for item in (_pin_file(value) for value in scorer.support_files) if item]
         pinned_paths = {item.path for item in support}
         rubric = _pin_file(scorer.rubric)

@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import os
 import subprocess
+import sys
 from pathlib import Path
 from types import ModuleType
 
 import pytest
+import yaml
 
+from llm_status_machine.runtimes.providers import simulator_runtime
 from llm_status_machine.utils import write_json
 from llm_status_machine.workspaces.backend import WorkspaceBackend
 
@@ -19,6 +23,8 @@ SCRIPT = (
     / "score_run.py"
 )
 ORACLE = SCRIPT.parents[1] / "oracle_tests" / "score_cache.py"
+PREPARE = SCRIPT.parent / "prepare_study.py"
+COMMAND_SCORER = SCRIPT.parents[1] / "oracle_tests" / "lsm_scorer.py"
 
 
 def load_score_module() -> ModuleType:
@@ -35,6 +41,37 @@ def load_oracle_module() -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_prepare_study_pins_python_and_all_scorer_sources(tmp_path: Path) -> None:
+    runtime_path = tmp_path / "runtime.json"
+    study_path = tmp_path / "study.yml"
+    write_json(runtime_path, simulator_runtime().model_dump(mode="json"))
+    environment = dict(os.environ)
+    environment["CODEX_HOME"] = str(tmp_path / "external-codex-home")
+
+    subprocess.run(
+        [
+            sys.executable,
+            str(PREPARE),
+            "--runtime",
+            str(runtime_path),
+            "--output",
+            str(study_path),
+        ],
+        check=True,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+
+    study = yaml.safe_load(study_path.read_text(encoding="utf-8"))
+    scorer = study["evaluation"]["scorers"][0]
+    assert scorer["argv"] == [str(Path(sys.executable).absolute()), str(COMMAND_SCORER.resolve())]
+    assert {item["path"] for item in scorer["support_files"]} == {
+        str(COMMAND_SCORER.resolve()),
+        str(ORACLE.resolve()),
+    }
 
 
 @pytest.mark.parametrize("failure_kind", ["exit", "invalid_json", "timeout"])

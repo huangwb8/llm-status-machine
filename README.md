@@ -260,7 +260,7 @@ uv run lsm store verify --data-root .lsm --json
 uv run lsm export run <run-id> result.tar.gz --data-root .lsm --format archive
 ```
 
-外部 command scorer 使用绝对 argv 且不经过 shell；可执行文件、rubric 和 support files 会在编译时固定摘要。scorer 只得到 treatment-free blind manifest 与 sealed final commit 的只读快照。若任务必须让 scorer 看到实际 Prompt，需显式设置 `include_prompt: true`，结果会保留潜在解盲 warning。
+外部 command scorer 使用绝对 argv 且不经过 shell；可执行文件、rubric 和 support files 会在编译时固定摘要。若 `argv[0]` 是 shebang 脚本，编译器会把实际解释器冻结为 executable，并自动把脚本作为 support file 放入只读 staging；依赖特定 Python 环境的 scorer 仍应显式使用该环境的绝对 Python launcher 作为 `argv[0]`。scorer 只得到 treatment-free blind manifest 与 sealed final commit 的只读快照。若任务必须让 scorer 看到实际 Prompt，需显式设置 `include_prompt: true`，结果会保留潜在解盲 warning。
 
 推断只读取 dataset manifest 和 TrialPlan 中冻结的 AnalysisSpec。`full_factorial` 使用分层标签置换，`matched_pair` 使用 pair 内 sign-flip，`block` 使用 block 内有效随机化单位；结果先报告 effect 与 bootstrap CI，再报告原始及 Holm 校正 p 值。失败与超时不会从 observations 消失，是否赋 worst-case 值只由预注册 policy 决定。
 

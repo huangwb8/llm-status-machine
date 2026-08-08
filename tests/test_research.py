@@ -34,7 +34,7 @@ from llm_status_machine.evaluation.runner import evaluate_run
 from llm_status_machine.execution.runner import RunEngine
 from llm_status_machine.recording.bundle import RawBundle, validate_seal
 from llm_status_machine.study.compiler import compile_study, load_plan, load_study, plan_bytes, write_plan
-from llm_status_machine.utils import read_json, write_json
+from llm_status_machine.utils import read_json, sha256_file, write_json
 
 
 def research_contract(*, scorer: ScorerSpec | None = None) -> tuple[EvaluationSpec, AnalysisSpec]:
@@ -292,6 +292,39 @@ print(json.dumps({'status': 'completed', 'metrics': [
         encoding="utf-8",
     )
     path.chmod(0o755)
+
+
+def test_command_scorer_freezes_shebang_interpreter_and_script(
+    source_workspace: Path, tmp_path: Path
+) -> None:
+    script = tmp_path / "scorer.py"
+    _write_scorer(script)
+    scorer = ScorerSpec(
+        id="quality-scorer",
+        kind="command",
+        version="fixture-v1",
+        argv=[str(script.absolute())],
+        metrics=[
+            MetricSpec(
+                id="quality",
+                type=MetricType.CONTINUOUS,
+                direction="higher",
+                lower_bound=0,
+                upper_bound=1,
+            )
+        ],
+    )
+    evaluation, analysis = research_contract(scorer=scorer)
+
+    plan = compile_study(
+        confirmatory_spec(source_workspace, evaluation=evaluation, analysis=analysis)
+    )
+    frozen = plan.evaluation.scorers[0]
+
+    assert frozen.argv[0] != str(script.resolve())
+    assert frozen.argv[1] == str(script.resolve())
+    assert frozen.executable_sha256 == sha256_file(Path(frozen.argv[0]))
+    assert any(item.path == str(script.resolve()) for item in frozen.support_files)
 
 
 async def _run_spec(spec, data_root: Path) -> tuple[dict[str, object], Path]:

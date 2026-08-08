@@ -31,4 +31,4 @@ episode 是唯一随机化与推断单位。评分重复会先聚合到 episode�
 
 ## 安全边界
 
-command scorer 不经 shell，默认看不到 arm、condition、ordinal 或 Prompt。只读 staging 是最小权限约定，不是操作系统沙箱；高风险 scorer 仍应在独立用户、容器或更强隔离中运行。blinding map 不传入 scorer，archive 可保留它用于完整复核。
+command scorer 不经 shell，默认看不到 arm、condition、ordinal 或 Prompt。编译器会冻结 shebang 实际解释器并把脚本转成 pinned staging input；依赖特定环境时应直接声明该环境的绝对解释器。只读 staging 是最小权限约定，不是操作系统沙箱；高风险 scorer 仍应在独立用户、容器或更强隔离中运行。blinding map 不传入 scorer，archive 可保留它用于完整复核。

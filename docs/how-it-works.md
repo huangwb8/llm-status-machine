@@ -64,7 +64,7 @@ evaluation 写在 episode 的 `evaluations/`，包含 scorer version 和输入 b
 
 ## 盲化评分
 
-`evaluate run` 按 TrialPlan 中冻结的 scorer 批量工作。command scorer 的 executable、rubric 与 support files 在编译时 pin；执行时只使用声明式 argv。每个 episode 先获得不含 arm、condition、ordinal 的 blind ID，scorer 在只读 staging 中读取 sealed final Git snapshot 和最小 manifest。非法 JSON、缺指标、越界、超时、非零退出与 pin 漂移都会形成失败 evaluation，并保留 raw stdout/stderr。
+`evaluate run` 按 TrialPlan 中冻结的 scorer 批量工作。command scorer 的 executable、rubric 与 support files 在编译时 pin；shebang 脚本会被拆成固定解释器与自动 pin 的脚本输入，执行时再把脚本参数映射到只读 staging 副本。依赖虚拟环境的 scorer 应显式把该环境的绝对解释器放在 `argv[0]`。每个 episode 先获得不含 arm、condition、ordinal 的 blind ID，scorer 在只读 staging 中读取 sealed final Git snapshot 和最小 manifest。非法 JSON、缺指标、越界、超时、非零退出与 pin 漂移都会形成失败 evaluation，并保留 raw stdout/stderr。
 
 同一 scorer 可以预注册多个重复评分；系统先按声明的 mean/median/majority/min/max 聚合到 episode 层，再计算 Krippendorff's alpha。所有计划内评分结束后才写入 run-level blinding map。
 
