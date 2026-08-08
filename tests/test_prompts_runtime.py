@@ -80,6 +80,29 @@ def test_custom_argv_must_match_frozen_runtime(source_workspace: Path, tmp_path:
         CustomCommandAdapter().build_launch(trial, tmp_path / "prompt.md", tmp_path / "artifacts")
 
 
+def test_custom_workspace_placeholder_points_to_episode_workspace(
+    source_workspace: Path, tmp_path: Path
+) -> None:
+    runtime = simulator_runtime().model_copy(update={"surface": "custom_command"})
+    spec = make_study(
+        source_workspace,
+        runtime=runtime,
+        profile={
+            "custom_argv": [runtime.executable, "{workspace}/tools/runner.py"],
+            "decoder": "jsonl",
+        },
+    )
+    trial = compile_study(spec).trials[0]
+    episode = tmp_path / "runs" / "run-1" / "episodes" / trial.id
+    bundle = episode / "attempts" / "attempt-1" / "raw-bundle"
+
+    launch = CustomCommandAdapter().build_launch(
+        trial, bundle / "prompt.md", bundle / "artifacts"
+    )
+
+    assert launch.argv[1] == str(episode / "workspace" / "tools" / "runner.py")
+
+
 def test_codex_argv_enforces_profile_and_artifact_scope(
     source_workspace: Path, tmp_path: Path
 ) -> None:

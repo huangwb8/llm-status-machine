@@ -129,7 +129,7 @@ class CustomCommandAdapter:
         replacements = {
             "{prompt}": trial.actual_prompt,
             "{prompt_file}": str(prompt_file),
-            "{workspace}": str(prompt_file.parent.parent.parent / "workspace"),
+            "{workspace}": str(prompt_file.parent.parent.parent.parent / "workspace"),
             "{artifacts_dir}": str(artifacts_dir),
             "{model}": trial.endpoint.model_id,
         }

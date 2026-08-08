@@ -30,11 +30,12 @@ from llm_status_machine.domain.models import (
     TrialPlan,
 )
 from llm_status_machine.evaluation.agreement import krippendorff_alpha
-from llm_status_machine.evaluation.runner import evaluate_run
+from llm_status_machine.evaluation.runner import _safe_extract_git_snapshot, evaluate_run
 from llm_status_machine.execution.runner import RunEngine
 from llm_status_machine.recording.bundle import RawBundle, validate_seal
 from llm_status_machine.study.compiler import compile_study, load_plan, load_study, plan_bytes, write_plan
 from llm_status_machine.utils import read_json, sha256_file, write_json
+from llm_status_machine.workspaces.backend import WorkspaceBackend
 
 
 def research_contract(*, scorer: ScorerSpec | None = None) -> tuple[EvaluationSpec, AnalysisSpec]:
@@ -325,6 +326,24 @@ def test_command_scorer_freezes_shebang_interpreter_and_script(
     assert frozen.argv[1] == str(script.resolve())
     assert frozen.executable_sha256 == sha256_file(Path(frozen.argv[0]))
     assert any(item.path == str(script.resolve()) for item in frozen.support_files)
+
+
+def test_scorer_snapshot_accepts_manifest_with_nested_directory_order(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    (source / "tools/cache").mkdir(parents=True)
+    (source / "tools/runner.py").write_text("print('ok')\n", encoding="utf-8")
+    (source / "tools/cache/compiled.bin").write_bytes(b"cache")
+    workspace = tmp_path / "workspace"
+    backend = WorkspaceBackend([])
+    backend.materialize(source, workspace)
+    final, _, _ = backend.capture_final(workspace)
+    destination = tmp_path / "snapshot"
+
+    digest = _safe_extract_git_snapshot(workspace, final, destination)
+
+    assert digest
+    assert (destination / "tools/runner.py").is_file()
+    assert (destination / "tools/cache/compiled.bin").is_file()
 
 
 async def _run_spec(spec, data_root: Path) -> tuple[dict[str, object], Path]:

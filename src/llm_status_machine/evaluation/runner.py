@@ -200,7 +200,10 @@ def _safe_extract_git_snapshot(workspace: Path, final: dict[str, Any], destinati
         archive.extractall(destination, filter="data")
     actual = _snapshot_entries(destination)
     keys = ("path", "type", "size", "sha256", "target")
-    expected = [{key: item[key] for key in keys if key in item} for item in final["entries"]]
+    expected = sorted(
+        ({key: item[key] for key in keys if key in item} for item in final["entries"]),
+        key=lambda item: item["path"],
+    )
     if actual != expected:
         raise ValueError("exported scorer snapshot does not match sealed workspace manifest")
     return sha256_bytes(canonical_json(actual))

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -189,3 +190,24 @@ def test_git_rename_records_original_path(source_workspace: Path, tmp_path: Path
     rename = next(item for item in changed if "R" in item["status"])
     assert rename["path"] == "new.txt"
     assert rename["original_path"] == "old.txt"
+
+
+def test_workspace_snapshot_commit_includes_git_ignored_files(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / ".gitignore").write_text("ignored.txt\n", encoding="utf-8")
+    (source / "ignored.txt").write_text("evidence\n", encoding="utf-8")
+    backend = WorkspaceBackend([])
+    workspace = tmp_path / "copy"
+
+    backend.materialize(source, workspace)
+    final, _, _ = backend.capture_final(workspace)
+    committed = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", final["git_commit"]],
+        cwd=workspace,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+
+    assert "ignored.txt" in committed

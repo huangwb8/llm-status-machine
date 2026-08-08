@@ -108,13 +108,15 @@ class WorkspaceBackend:
         shutil.copytree(source, destination, symlinks=True, ignore=ignore)
         initial = build_manifest(destination, {".git"})
         _run_git(destination, "init", "--initial-branch=main", "--quiet")
-        _run_git(destination, "add", "--all")
+        # WorkspaceFixture.excludes is the evidence boundary; host/user Git ignore files are not.
+        _run_git(destination, "add", "--all", "--force")
         _run_git(destination, "commit", "--allow-empty", "--quiet", "-m", "initial snapshot")
         initial["git_commit"] = _run_git(destination, "rev-parse", "HEAD").stdout.decode().strip()
         return initial
 
     def capture_final(self, workspace: Path) -> tuple[dict[str, Any], list[dict[str, str]], bytes]:
-        _run_git(workspace, "add", "--all")
+        # Keep the final commit byte-for-byte aligned with the manifest, including ignored evidence.
+        _run_git(workspace, "add", "--all", "--force")
         diff = _run_git(workspace, "diff", "--cached", "--binary", "--full-index", "HEAD", "--", ".").stdout
         status_output = _run_git(workspace, "status", "--porcelain=v1", "-z", "--untracked-files=all").stdout
         changed: list[dict[str, str]] = []
