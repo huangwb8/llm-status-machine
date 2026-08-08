@@ -14,7 +14,7 @@ from llm_status_machine.recording.bundle import RawBundle
 from llm_status_machine.recording.recorder import ProcessResult, record_process
 from llm_status_machine.storage.index import IndexStore
 from llm_status_machine.utils import sha256_file, stable_id, utc_now, write_json
-from llm_status_machine.version import SCHEMA_VERSION, __version__
+from llm_status_machine.version import RAW_BUNDLE_SCHEMA_VERSION, RUN_SCHEMA_VERSION, __version__
 from llm_status_machine.workspaces.backend import WorkspaceBackend, build_manifest
 
 
@@ -27,26 +27,39 @@ class RunEngine:
         self._active = 0
         self._max_active = 0
         self._active_lock = asyncio.Lock()
+        self._dispatch_count = 0
+        self._dispatch_lock = asyncio.Lock()
+        self._current_concurrency = 1
 
     def close(self) -> None:
         self.index.close()
 
     async def run(self, plan: TrialPlan) -> dict[str, Any]:
+        if plan.study_mode == "confirmatory" and not plan.diagnostics.get("confirmatory_valid", False):
+            raise ValueError("confirmatory plan failed preflight diagnostics")
+        self._dispatch_count = 0
+        self._current_concurrency = plan.concurrency
         run_id = stable_id("run", {"plan": plan.id, "started": utc_now(), "pid": os.getpid()})
         run_root = self.runs_root / run_id
         run_root.mkdir(parents=True, exist_ok=False)
         (run_root / "episodes").mkdir()
+        frozen_plan_path = run_root / "plan.json"
+        write_json(frozen_plan_path, plan.model_dump(mode="json"))
         started_at = utc_now()
         run_manifest: dict[str, Any] = {
-            "schema_version": SCHEMA_VERSION,
+            "schema_version": RUN_SCHEMA_VERSION,
             "id": run_id,
             "plan_id": plan.id,
+            "plan_sha256": sha256_file(frozen_plan_path),
             "study_name": plan.study_name,
             "status": "running",
             "started_at": started_at,
             "finished_at": None,
             "concurrency": plan.concurrency,
             "state_policy": plan.state_policy,
+            "study_mode": plan.study_mode,
+            "design": plan.design,
+            "design_diagnostics": plan.diagnostics,
             "episodes": [],
         }
         write_json(run_root / "run.json", run_manifest)
@@ -102,6 +115,10 @@ class RunEngine:
         episode_root.mkdir(parents=True, exist_ok=False)
         attempt_root.mkdir(parents=True)
         raw = RawBundle(bundle_root)
+        actual_started_at = utc_now()
+        async with self._dispatch_lock:
+            self._dispatch_count += 1
+            actual_dispatch_batch = (self._dispatch_count - 1) // self._current_concurrency + 1
         workspace = episode_root / "workspace"
         source = inherited_source or Path(trial.workspace.path)
         backend = WorkspaceBackend(trial.workspace.excludes)
@@ -214,10 +231,20 @@ class RunEngine:
             workspace=Outcome(status=workspace_status, detail=workspace_error),
         )
         raw.write_json("outcomes.json", outcomes.model_dump(mode="json"))
+        actual_finished_at = utc_now()
+        deviations = []
+        if actual_dispatch_batch != trial.dispatch_batch:
+            deviations.append(
+                {
+                    "kind": "dispatch_batch_mismatch",
+                    "planned": trial.dispatch_batch,
+                    "actual": actual_dispatch_batch,
+                }
+            )
         raw.write_json(
             "metadata.json",
             {
-                "schema_version": SCHEMA_VERSION,
+                "schema_version": RAW_BUNDLE_SCHEMA_VERSION,
                 "application_version": __version__,
                 "run_id": run_id,
                 "episode_id": trial.id,
@@ -227,12 +254,17 @@ class RunEngine:
                 "workspace": str(workspace),
                 "result": result.__dict__ if result else None,
                 "outcomes": outcomes.model_dump(mode="json"),
+                "actual_started_at": actual_started_at,
+                "actual_finished_at": actual_finished_at,
+                "planned_dispatch_batch": trial.dispatch_batch,
+                "actual_dispatch_batch": actual_dispatch_batch,
+                "design_deviations": deviations,
             },
         )
         seal = raw.seal(run_id=run_id, episode_id=trial.id, attempt_id=attempt_id)
         status = "completed" if outcomes.completed else process_status
         episode = {
-            "schema_version": SCHEMA_VERSION,
+            "schema_version": RAW_BUNDLE_SCHEMA_VERSION,
             "id": trial.id,
             "run_id": run_id,
             "ordinal": trial.ordinal,
@@ -240,6 +272,16 @@ class RunEngine:
             "status": status,
             "workspace": str(workspace),
             "parent_trial_id": trial.parent_trial_id,
+            "arm_id": trial.arm_id,
+            "comparison_set_id": trial.comparison_set_id,
+            "pair_id": trial.pair_id,
+            "block_id": trial.block_id,
+            "sequence_position": trial.sequence_position,
+            "planned_dispatch_batch": trial.dispatch_batch,
+            "actual_dispatch_batch": actual_dispatch_batch,
+            "actual_started_at": actual_started_at,
+            "actual_finished_at": actual_finished_at,
+            "design_deviations": deviations,
             "bundle": str(raw.root),
             "bundle_relative": raw.root.relative_to(episode_root).as_posix(),
             "bundle_sha256": seal["bundle_sha256"],

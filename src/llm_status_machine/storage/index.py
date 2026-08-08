@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from llm_status_machine.utils import read_json
-from llm_status_machine.version import SCHEMA_VERSION
+from llm_status_machine.version import INDEX_SCHEMA_VERSION
 
 SCHEMA = """
 create table if not exists metadata (
@@ -32,6 +32,24 @@ create table if not exists episodes (
   body text not null
 );
 create index if not exists episodes_run on episodes(run_id, ordinal);
+create table if not exists evaluations (
+  id text primary key,
+  run_id text not null,
+  episode_id text not null,
+  scorer_id text not null,
+  status text not null,
+  path text not null,
+  body text not null
+);
+create index if not exists evaluations_run on evaluations(run_id, episode_id);
+create table if not exists analyses (
+  id text primary key,
+  run_id text not null,
+  status text not null,
+  path text not null,
+  body text not null
+);
+create index if not exists analyses_run on analyses(run_id);
 """
 
 
@@ -42,8 +60,15 @@ class IndexStore:
         self.connection.execute("pragma journal_mode=WAL")
         self.connection.execute("pragma foreign_keys=ON")
         self.connection.executescript(SCHEMA)
+        existing = self.connection.execute(
+            "select value from metadata where key = 'schema_version'"
+        ).fetchone()
+        if existing and int(existing[0]) > INDEX_SCHEMA_VERSION:
+            self.connection.close()
+            raise ValueError(f"unsupported future index schema_version: {existing[0]}")
         self.connection.execute(
-            "insert or replace into metadata(key, value) values('schema_version', ?)", (str(SCHEMA_VERSION),)
+            "insert or replace into metadata(key, value) values('schema_version', ?)",
+            (str(INDEX_SCHEMA_VERSION),),
         )
         self.connection.commit()
 
@@ -90,6 +115,40 @@ class IndexStore:
         row = self.connection.execute("select body from runs where id = ?", (run_id,)).fetchone()
         return json.loads(row[0]) if row else None
 
+    def upsert_evaluation(self, evaluation: dict[str, Any], path: Path) -> None:
+        self.connection.execute(
+            """insert into evaluations(id, run_id, episode_id, scorer_id, status, path, body)
+               values(?, ?, ?, ?, ?, ?, ?)
+               on conflict(id) do update set status=excluded.status, path=excluded.path,
+                 body=excluded.body""",
+            (
+                evaluation["id"],
+                evaluation["run_id"],
+                evaluation["episode_id"],
+                evaluation["scorer_id"],
+                evaluation["status"],
+                str(path),
+                json.dumps(evaluation, ensure_ascii=False, sort_keys=True),
+            ),
+        )
+        self.connection.commit()
+
+    def upsert_analysis(self, analysis: dict[str, Any], path: Path) -> None:
+        self.connection.execute(
+            """insert into analyses(id, run_id, status, path, body)
+               values(?, ?, ?, ?, ?)
+               on conflict(id) do update set status=excluded.status, path=excluded.path,
+                 body=excluded.body""",
+            (
+                analysis["id"],
+                analysis["run_id"],
+                analysis["status"],
+                str(path),
+                json.dumps(analysis, ensure_ascii=False, sort_keys=True),
+            ),
+        )
+        self.connection.commit()
+
     def list_runs(self) -> list[dict[str, Any]]:
         return [
             json.loads(row[0])
@@ -97,7 +156,7 @@ class IndexStore:
         ]
 
     def reindex(self, runs_root: Path) -> dict[str, int]:
-        counts = {"runs": 0, "episodes": 0, "skipped": 0}
+        counts = {"runs": 0, "episodes": 0, "evaluations": 0, "analyses": 0, "skipped": 0}
         for run_path in sorted(runs_root.glob("*/run.json")):
             try:
                 run = read_json(run_path)
@@ -107,6 +166,18 @@ class IndexStore:
                     episode = read_json(episode_path)
                     self.upsert_episode(run["id"], episode, episode_path.parent)
                     counts["episodes"] += 1
+                    for evaluation_path in sorted(
+                        (episode_path.parent / "evaluations").glob("*/evaluation.json")
+                    ):
+                        evaluation = read_json(evaluation_path)
+                        self.upsert_evaluation(evaluation, evaluation_path.parent)
+                        counts["evaluations"] += 1
+                for analysis_path in sorted(
+                    (run_path.parent / "research" / "analyses").glob("*/analysis-manifest.json")
+                ):
+                    analysis = read_json(analysis_path)
+                    self.upsert_analysis(analysis, analysis_path.parent)
+                    counts["analyses"] += 1
             except (OSError, KeyError, ValueError, json.JSONDecodeError):
                 counts["skipped"] += 1
         return counts

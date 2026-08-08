@@ -20,6 +20,10 @@ test = [
   "pytest-asyncio>=1.0,<2",
   "ruff>=0.12,<1",
 ]
+analysis = [
+  "numpy>=2.3,<3",
+  "scipy>=1.16,<2",
+]
 
 [project.scripts]
 lsm = "llm_status_machine.cli.app:app"

@@ -10,7 +10,7 @@
 ## 裁决
 
 - 项目核心采用 Python 3.12、`uv`、Typer、Pydantic、SQLite WAL 和文件系统 RawBundle。
-- 应用版本由 `src/llm_status_machine/version.py` 唯一维护；数据 schema 版本独立维护。
+- 应用版本由 `src/llm_status_machine/version.py` 唯一维护；Study、TrialPlan、Run、RawBundle、Event、Evaluation、Analysis 与 Index schema 分别维护。
 - `Episode` 是实验与统计单位；每次进程启动是 `Attempt`。事件仅是 episode 内观察，不是独立样本。
 - `concurrency` 只表示并发上限；`state_policy` 独立取值 `independent`、`carry_forward` 或 `branch`。
 - Harness surface、runtime build、model endpoint、execution profile 和 workspace fixture 分离。执行只接受已经冻结且包含绝对运行时身份的计划。
@@ -18,10 +18,12 @@
 - 完成状态要求 process、protocol、capture 和 workspace 四类 outcome 都满足计划约束；评分不得改写 sealed RawBundle。
 - source workspace 永不直接执行。每个 episode 使用独立副本；carry-forward 只继承已 seal 的父 episode。
 - 子进程禁止默认 shell，POSIX 使用独立 process group，并在超时时先 TERM 后 KILL。
+- 确认性研究只允许 independent、concurrency=1、预注册 outcome/contrast/policy 和版本化平衡随机化；旧 v1 契约只作为 exploratory 读取。
+- 评分、数据集与推断是 RawBundle 之外的不可变派生层；episode 是唯一统计单位。
 
 ## Schema 与目录
 
-新结果根以 `schema_version = 1` 自描述：
+各结果使用自身 `schema_version` 自描述：
 
 ```text
 <project>/.lsm/
@@ -33,6 +35,9 @@
       workspace/
       attempts/attempt-1/raw-bundle/
       evaluations/
+    blinding/
+    research/datasets/
+    research/analyses/
 ```
 
 RawBundle 至少包含实际 Prompt、raw stdout/stderr、transcript、metadata、outcomes、初始/最终 workspace manifest、changed files、binary diff、artifact manifest 和 seal。

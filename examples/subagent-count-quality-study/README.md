@@ -1,6 +1,6 @@
 # 评估类 subagent 数量与软件开发质量
 
-这个示例把一次真实的软件开发 agent 运行当作一个 **episode**，比较同一 Codex 工作流在 3、6、9 个只读评估类 subagent 条件下的端到端表现。三个 episode 都从同一个 `AsyncTTLCache` starter workspace 的独立副本开始；评估结束后，恰好一个总结 subagent 汇总发现，顶层 Codex 是唯一允许修改产品代码和运行公开测试的主体。
+这个示例把一次真实的软件开发 agent 运行当作一个 **episode**，比较同一 Codex 工作流在 3、6、9 个只读评估类 subagent 条件下的端到端表现。历史 pilot 每臂一次；当前生成器每臂预注册三次，共九个 episode。它们都从同一个 `AsyncTTLCache` starter workspace 的独立副本开始；评估结束后，恰好一个总结 subagent 汇总发现，顶层 Codex 是唯一允许修改产品代码和运行公开测试的主体。
 
 它测试的不是抽象的“模型智商”，而是一个可复现的 LLM agent 系统在固定任务和运行条件下的**可观察行为**：它能否交付、最终代码是否满足隐藏验收、耗时与 token 消耗如何，以及它留下的过程证据是否完整。这样定义实验单位，才能把模型、Prompt、Harness、runtime、workspace 和结果评分放在同一条可审计链路上。
 
@@ -11,47 +11,47 @@
 上图是本示例的静态概览图：左起依次表示唯一计划操纵、评估汇总、顶层 Codex、过程记录、外部盲化评分与 episode 级指标。图中独立 fixture 放在顶层 Codex 旁，用来强调所有 agent 操作都发生在隔离副本中；实际时序是先复制 fixture，再启动 evaluator。下方的 Mermaid 图保留为可在 Git 中审阅、修改的结构化版本。
 
 ```mermaid
-flowchart LR
+flowchart TB
     classDef treatment fill:#e8f1ff,stroke:#2563a8,stroke-width:2px,color:#102a43
     classDef control fill:#f6f8fa,stroke:#64748b,stroke-width:1.5px,color:#1f2937
     classDef process fill:#eefbf3,stroke:#1f8a52,stroke-width:1.5px,color:#123a25
     classDef evidence fill:#fff7e6,stroke:#b7791f,stroke-width:1.5px,color:#4a2d00
     classDef outcome fill:#fff0f2,stroke:#c2415a,stroke-width:2px,color:#4a1020
 
-    subgraph design[冻结实验计划：每个条件仅改变 evaluator 数量]
+    subgraph design[实验设计｜冻结计划]
         direction TB
-        T[处理变量：EVALUATOR_COUNT<br/>3 / 6 / 9]:::treatment
-        C[保持一致：任务、Prompt 其余文本、fixture、<br/>pinned Codex/runtime、模型、profile、timeout]:::control
-        R[后续重复：seed 决定非单调顺序<br/>9 → 3 → 6；按时间 block 轮换]:::control
+        T["唯一处理变量<br/><b>EVALUATOR_COUNT</b><br/>3 / 6 / 9"]:::treatment
+        C["固定条件<br/>任务、Prompt 其余文本、fixture<br/>pinned Codex/runtime、模型、profile、timeout"]:::control
+        R["执行安排<br/>seed 决定 comparison set 顺序<br/>三臂在位置 1 / 2 / 3 平衡轮换"]:::control
     end
 
-    subgraph episode[一个独立 episode]
+    subgraph episode[单个独立 Episode｜隔离 workspace]
         direction TB
-        W[从同一 AsyncTTLCache fixture<br/>创建独立 workspace]:::process
-        E[只读 evaluator × N<br/>相同 brief；并发上限 2；不得修改代码]:::process
-        S[只读 summary × 1<br/>去重并输出实施清单]:::process
-        X[顶层 Codex × 1<br/>唯一代码修改者；运行公开测试]:::process
+        W["复制同一 AsyncTTLCache fixture<br/>创建独立 workspace"]:::process
+        E["只读 evaluator × N<br/>相同 brief｜并发上限 2｜不得改代码"]:::process
+        S["只读 summary × 1<br/>去重发现并输出实施清单"]:::process
+        X["顶层 Codex × 1<br/>唯一代码修改者｜运行公开测试"]:::process
         W --> E --> S --> X
     end
 
-    subgraph record[LLM Status Machine 记录与冻结]
+    subgraph record[证据保全｜LLM Status Machine]
         direction TB
-        B[Raw stdout/stderr、transcript、事件、<br/>过程 artifact、workspace snapshot]:::evidence
-        G[Git commit、changed files、diff、seal]:::evidence
+        B["原始与过程记录<br/>stdout/stderr、transcript、事件<br/>artifact、workspace snapshot"]:::evidence
+        G["结果冻结<br/>Git commit、changed files、diff、seal"]:::evidence
         B --> G
     end
 
-    subgraph measure[外部测量：不读取可变现场代码]
+    subgraph measure[外部测量｜盲化评分]
         direction TB
-        O[从 sealed final commit 导出快照]:::evidence
-        Q[同一隐藏 oracle 测试盲化评分]:::outcome
-        Y[episode 级结果：completed、<br/>门禁调整质量分、oracle code score、时长、token]:::outcome
+        O["从 sealed final commit<br/>导出待评分快照"]:::evidence
+        Q["同一隐藏 oracle 测试<br/>对快照进行盲化评分"]:::outcome
+        Y["Episode 结果<br/>completed、门禁调整质量分、oracle 分<br/>时长、token"]:::outcome
         O --> Q --> Y
     end
 
-    T --> E
-    C -. 固定 .-> W
-    R -. 执行安排 .-> T
+    T -. "仅改变" .-> E
+    C -. "固定输入" .-> W
+    R -. "安排条件" .-> T
     X --> B
     G --> O
 ```
@@ -88,7 +88,8 @@ LLM agent 的输出不是一个静态答案：它会读取文件、调用工具�
 3. 顶层 Codex 按 Prompt 先启动恰好 `N` 个只读 evaluator（最多两个并行），再启动一个只读 summary。
 4. 顶层 Codex 根据 summary 独自修复 `AsyncTTLCache`，运行可见的公开测试，并结束 episode。
 5. LLM Status Machine 保存 transcript、stdout/stderr、event、workspace 初末快照、Git commit、diff、artifact 和 seal。
-6. 外部评分程序先验证 seal，再从最终 commit 导出临时快照，运行同一套不可见 oracle 测试，最后才把盲化分数关联回 3/6/9 条件。
+6. 通用 `evaluate run` 先验证 seal，再从最终 commit 导出只读快照并运行 pinned oracle；全部评分完成后才解盲。
+7. 通用 research 层生成一行一个 episode 的数据集，按预注册 contrasts 计算效应量、区间、置换检验与 Holm 校正，并生成报告。
 
 这里的顺序很重要：模型在运行时不能根据 oracle 反向调参；评分程序在盲化阶段也不应先读 treatment。两者共同降低了“结果由现场残留或人工主观判断决定”的风险。
 
@@ -102,7 +103,7 @@ LLM agent 的输出不是一个静态答案：它会读取文件、调用工具�
 
 本轮是每个条件一次的描述性 pilot，不足以估计稳定趋势或统计显著性。已完成的 pilot 恰好按 3 → 6 → 9 固定升序运行，数量效应与顺序、时间漂移及 API 状态完全混杂；它的主要价值是展示 Prompt、pinned runtime、TrialPlan、真实模型执行、RawBundle、workspace diff、seal、外部盲化评分和 R Markdown 分析如何串成一条可审计链路。
 
-后续重新生成计划时使用预注册 seed `20260810`，执行顺序为 9 → 3 → 6，避免再次采用单调顺序。要得到初步的比较证据，应在冻结方案后按时间 block 轮换条件、每个条件至少运行 3 个独立 episode，并保留所有失败和 requested count 的 intention-to-treat 分组。即使这样，结论仍限于本机、当前 Codex build、当前模型和该 `AsyncTTLCache` 任务；要讨论更一般的 LLM 行为，还需要跨任务、跨时间窗和跨模型重复。
+后续重新生成计划时使用预注册 seed `20260810`，每臂运行 3 个独立 episode，并让三臂在 comparison set 内的位置 1 / 2 / 3 各出现一次。所有失败按 intention-to-treat 保留，两个主要 contrasts 进入同一 Holm family。即使这样，结论仍限于本机、当前 Codex build、当前模型和该 `AsyncTTLCache` 任务；要讨论更一般的 LLM 行为，还需要跨任务、跨时间窗和跨模型重复。
 
 ## 安全边界
 
@@ -114,11 +115,12 @@ LLM agent 的输出不是一个静态答案：它会读取文件、调用工具�
 ## 目录
 
 ```text
-fixture/                 被三个 episode 独立复制的 starter 软件
+fixture/                 被每个 episode 独立复制的 starter 软件
 oracle_tests/            episode 看不到的外部验收程序
 prompts/                 单一模板与 3/6/9 三个物化 Prompt
 scripts/prepare_study.py 生成并校验本地 StudySpec
-scripts/score_run.py     对 sealed final workspace 盲化评分
+scripts/score_run.py     兼容历史 pilot 的专用评分与 CSV 导出
+oracle_tests/lsm_scorer.py 通用 command scorer 协议适配器
 analysis/                R + Rmd 可复现分析
 results/                 可提交的脱敏 tidy 结果与摘要
 .lsm/                    本地 TrialPlan、run 与 RawBundle，已忽略
@@ -151,15 +153,21 @@ uv run lsm run start \
   examples/subagent-count-quality-study/.lsm/plan.pilot.jsonl \
   --data-root examples/subagent-count-quality-study/.lsm --json
 
-uv run python examples/subagent-count-quality-study/scripts/score_run.py \
-  --data-root examples/subagent-count-quality-study/.lsm \
-  --output examples/subagent-count-quality-study/results/pilot.csv
+uv run lsm evaluate run <run-id> \
+  --data-root examples/subagent-count-quality-study/.lsm --json
+uv run lsm research dataset <run-id> \
+  --data-root examples/subagent-count-quality-study/.lsm --json
+uv run lsm research infer <run-id> \
+  --data-root examples/subagent-count-quality-study/.lsm --json
+uv run lsm research report <analysis-id> \
+  --data-root examples/subagent-count-quality-study/.lsm --json
 ```
 
-分析脚本从 `results/pilot.csv` 生成完整 RDS、PDF 图和 Rmd 报告：
+分析脚本默认继续读取历史 `results/pilot.csv`；新实验可让它直接读取通用 research dataset，不再遍历 RawBundle 或重建 treatment join：
 
 ```bash
 cd examples/subagent-count-quality-study/analysis
+export LSM_OBSERVATIONS_CSV=/absolute/path/to/observations.csv
 Rscript quality_analysis.R
 Rscript -e 'rmarkdown::render("quality_analysis.Rmd")'
 ```

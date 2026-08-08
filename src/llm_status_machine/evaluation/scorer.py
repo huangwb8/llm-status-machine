@@ -24,6 +24,7 @@ def score_episode(episode_root: Path) -> dict[str, Any]:
         "episode_id": episode["id"],
         "bundle_sha256": seal["bundle_sha256"],
         "scorer": SCORER_VERSION,
+        "scorer_role": "execution_integrity",
         "created_at": utc_now(),
         "passed": all(value["status"] == "completed" for value in outcomes.values()),
         "changed_file_count": len(changed),

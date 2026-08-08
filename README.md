@@ -9,7 +9,7 @@
 - 3 次连续运行是彼此独立，还是后一轮真的继承了前一轮的工作区？
 - 几周后还能不能证明，当时使用的是哪一个可执行文件和哪一份输入？
 
-LLM Status Machine（`lsm`）是一个 Python 3.12+ 本地命令行实验台。它把这些问题变成一个明确的流程：**描述实验 → 冻结执行计划 → 运行 episode → 封存原始证据 → 在证据之外评分。**
+LLM Status Machine（`lsm`）是一个 Python 3.12+ 本地命令行实验台。它把这些问题变成一个明确的流程：**描述实验 → 冻结执行计划 → 运行 episode → 封存原始证据 → 盲化评分 → episode 级数据集 → 设计型推断。**
 
 它不是聊天界面，也不是云端控制台；它面向想认真观察 LLM CLI 行为的开发者、研究者和评估工程师。
 
@@ -46,6 +46,8 @@ LLM Status Machine（`lsm`）是一个 Python 3.12+ 本地命令行实验台。�
 - 写入绝对 runtime 路径、版本信息和 SHA-256。
 
 执行时不会重新读取 `latest`、依赖宿主 `PATH` 或临时扩展实验矩阵；它会再次校验 runtime digest 与 workspace baseline。这样“计划的是哪次实验”和“实际跑的是哪次实验”可以对上。
+
+确认性 Study 还会冻结主要 outcome、Prompt contrasts、失败/缺失策略、显著性水平、bootstrap/permutation 次数和分析 seed。编译器先构造 comparison set，再用版本化的平衡轮换算法决定 set 与 arm 顺序；每个 Trial 都显式保存 arm、pair/block、sequence position、dispatch batch 和随机化 draw。
 
 ### 把并发和状态拆开
 
@@ -115,7 +117,7 @@ uv run lsm smoke --root tmp/core-smoke-manual --json
 ## 一次实验从配置到证据的过程
 
 ```text
-StudySpec (YAML)
+StudySpec v2 (YAML)
        │ validate / compile
        ▼
 冻结的 TrialPlan（JSONL：一个计划头和确定的 trial）
@@ -123,7 +125,10 @@ StudySpec (YAML)
        ▼
 Run ──► Episode ──► Attempt ──► sealed RawBundle
                                       │
-                                      └──► evaluation（位于 bundle 外）
+                                      └──► blind evaluation（位于 bundle 外）
+                                                   │
+                                                   ▼
+                         observations.jsonl/csv ──► inference + report
 ```
 
 ![LLM Status Machine 原理图：从 StudySpec 冻结 TrialPlan，在隔离 episode 中执行并封存 RawBundle；评分和导出只能读取 sealed evidence。](docs/llm-status-machine-principle.jpg)
@@ -143,7 +148,7 @@ Run ──► Episode ──► Attempt ──► sealed RawBundle
 最小配置来自 `lsm init` 生成的 `study.example.yml`。下面这个节选展示了最重要的可控变量；路径必须是绝对路径，因为它们会成为实验身份的一部分。
 
 ```yaml
-schema_version: 1
+schema_version: 2
 name: prompt-comparison
 seed: 42
 repeats: 3
@@ -176,7 +181,7 @@ profile:
   env_allowlist: [OPENAI_API_KEY]
 ```
 
-上述配置会生成 `2 prompts × 2 factor levels × 3 repeats = 12` 个 trial；`seed` 只决定这 12 个 trial 的稳定顺序。若要让下一轮继承上一轮工作区，把 `state_policy` 改为 `carry_forward`，同时把 `concurrency` 设为 `1`。
+上述配置会生成 `2 prompts × 2 factor levels × 3 repeats = 12` 个 exploratory trial；`seed` 只决定允许随机化的稳定顺序。确认性研究还必须设为 `study_mode: confirmatory`、`independent + concurrency=1`，并声明 `evaluation.scorers`、`analysis.outcomes` 和 `analysis.contrasts`。编译门禁不会把缺少这些声明的旧实验伪装成确认性研究。
 
 ## 接入真实 CLI runtime
 
@@ -226,6 +231,13 @@ uv run lsm harness lock \
         metadata.json
         seal.json
       evaluations/              # 重评分结果，不写回 RawBundle
+    blinding/map.json            # 全部评分完成后保存的解盲映射
+    evaluation-summary.json      # 覆盖率、聚合指标与评分一致性
+    research/datasets/<id>/
+      observations.jsonl / observations.csv
+      dataset-manifest.json
+    research/analyses/<id>/
+      results.json / report.md / analysis-manifest.json
 ```
 
 常用的后续操作：
@@ -234,12 +246,30 @@ uv run lsm harness lock \
 # 在不触碰原始 bundle 的情况下评分。
 uv run lsm evaluate episode <episode-id> --data-root .lsm --json
 
+# 执行冻结计划内全部 scorer，并构建/分析一行一个 episode 的研究数据。
+uv run lsm evaluate run <run-id> --data-root .lsm --json
+uv run lsm research dataset <run-id> --data-root .lsm --json
+uv run lsm research infer <run-id> --data-root .lsm --json
+uv run lsm research report <analysis-id> --data-root .lsm --json
+
 # 即使删除了索引，也可从 run/episode manifest 重建或校验。
 uv run lsm store reindex --data-root .lsm --json
 uv run lsm store verify --data-root .lsm --json
 
 # 导出某次 run；format 可为 archive、jsonl 或 csv。
 uv run lsm export run <run-id> result.tar.gz --data-root .lsm --format archive
+```
+
+外部 command scorer 使用绝对 argv 且不经过 shell；可执行文件、rubric 和 support files 会在编译时固定摘要。scorer 只得到 treatment-free blind manifest 与 sealed final commit 的只读快照。若任务必须让 scorer 看到实际 Prompt，需显式设置 `include_prompt: true`，结果会保留潜在解盲 warning。
+
+推断只读取 dataset manifest 和 TrialPlan 中冻结的 AnalysisSpec。`full_factorial` 使用分层标签置换，`matched_pair` 使用 pair 内 sign-flip，`block` 使用 block 内有效随机化单位；结果先报告 effect 与 bootstrap CI，再报告原始及 Holm 校正 p 值。失败与超时不会从 observations 消失，是否赋 worst-case 值只由预注册 policy 决定。
+
+统计依赖保持可选；运行与记录无需 NumPy/SciPy。需要推断或功效计算时安装：
+
+```bash
+uv sync --frozen --extra analysis
+uv run lsm study power study.yml --metric-type continuous --effect 5 --standard-deviation 10 --json
+uv run lsm research smoke --root tmp/research-smoke-manual --json
 ```
 
 如果进程意外中断，`lsm run reconcile` 会把仍为 `running` 的 run 标记为 `orphaned`，不会猜测它已成功完成。

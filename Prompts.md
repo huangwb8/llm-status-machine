@@ -1,6 +1,24 @@
 # General
 
+- 发布全新版本
+
+```
+github项目：huangwb8/llm-status-machine
+version=2.0.0
+- git-commit skill保存变更; 只用一个commit概括所有更新。 commit要新增 tag 为 v{version}，并且commit信息（简体中文为主）要提到更新版本（写commit信息的时候，不能仅根据最近1次commit； 而是版本间所有commit的总结的综合形成版本特异性commit信息）
+- git-publish-release skill 发布为一个release到github仓库
+- 汇报 release 链接、完整发布产物清单和完整发布总耗时。
+```
+
 # 日常
+
+---
+
+以 examples/subagent-count-quality-study 为例，检验一下最新项目代码的所有主要功能，判断项目实际用于是否可以用于真实的Prompt工程研究； 目前本示例还是基于旧版项目。如果发现项目源代码有缺陷，请自主规划修复。
+
+---
+
+基于 docs/plans/2026-08-08-严谨实验设计评分与统计推断.md 优化源代码。跳过计划与根因核验步骤， 直接开始落实计划。 计划里的所有阶段的问题（p0-p2级）都要解决。如果工作时有疑问，或者有更好的方案，自己选个最优方案优化，不要问我。不要破坏其它已经存在的功能。要保证最终成品能正常、稳定、高效地工作。
 
 ---
 

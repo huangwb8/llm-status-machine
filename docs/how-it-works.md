@@ -2,9 +2,11 @@
 
 ## 从 Study 到冻结计划
 
-StudySpec 把 Prompt revisions、因素、重复次数、workspace fixture、Harness surface、runtime build、model endpoint 和 execution profile 放在同一个可校验文档里。编译器先生成 source workspace manifest，再展开 full factorial、matched pair 或 block 条件，最后用 seed 确定稳定顺序。
+StudySpec v2 把 Prompt revisions、因素、重复次数、workspace fixture、Harness surface、runtime build、model endpoint、execution profile、EvaluationSpec 和 AnalysisSpec 放在同一个可校验文档里。编译器先生成 source workspace manifest，再构造 comparison sets，并通过 `balanced-rotation@1` 生成可复算顺序。
 
 编译结果是 JSONL `TrialPlan`。首行是计划 header，后续每行是一个完整 Trial。runner 不会在执行时新增 episode、解析 `latest` 或重新随机分配条件。
+
+探索性研究可以继续使用既有状态策略和有界并发。确认性研究在任何 runtime 启动前必须通过门禁：`independent + concurrency=1`、平衡的 arm sequence、至少一个主要 outcome 和 contrast，以及显式失败/缺失策略。v1 Study/Plan 只在内存中迁移为 exploratory，并保留 warning；未来 schema 会被提前拒绝。
 
 `concurrency` 和 `state_policy` 是正交字段：
 
@@ -60,9 +62,27 @@ seal.json
 
 evaluation 写在 episode 的 `evaluations/`，包含 scorer version 和输入 bundle digest。`lsm evaluate` 会先验证 seal，评分后再次核对 digest。
 
+## 盲化评分
+
+`evaluate run` 按 TrialPlan 中冻结的 scorer 批量工作。command scorer 的 executable、rubric 与 support files 在编译时 pin；执行时只使用声明式 argv。每个 episode 先获得不含 arm、condition、ordinal 的 blind ID，scorer 在只读 staging 中读取 sealed final Git snapshot 和最小 manifest。非法 JSON、缺指标、越界、超时、非零退出与 pin 漂移都会形成失败 evaluation，并保留 raw stdout/stderr。
+
+同一 scorer 可以预注册多个重复评分；系统先按声明的 mean/median/majority/min/max 聚合到 episode 层，再计算 Krippendorff's alpha。所有计划内评分结束后才写入 run-level blinding map。
+
+## Episode 级数据与推断
+
+`research dataset` 验证 plan、RawBundle seal 与 evaluation manifest 后，生成恰好一行一个计划 episode 的 `observations.jsonl` 和 CSV。未启动、失败、超时、scorer 失败与 metric 缺失都有显式状态或原因；它们不会被 complete-case 逻辑静默删除。
+
+`research infer` 只能消费 dataset manifest 和冻结 AnalysisSpec：
+
+- full-factorial：独立臂均值差或风险差、分层 bootstrap、strata 内标签置换；
+- matched-pair：pair 差值、pair bootstrap、pair 内 exact/Monte Carlo sign-flip；
+- block：按有效随机化单位加权的 block 内差值、block-aware bootstrap 与 block 内标签置换。
+
+结果包含 planned/successful/valid/failed/missing n、effect、标准化效应、CI、原始及 Holm 校正 p 值、Monte Carlo 精度、warnings 和 `confirmatory_valid`。样本或设计不完整时仍保留描述性结果，但不会制造确认性结论。
+
 ## 索引、恢复与导出
 
-`.lsm/index.sqlite3` 使用 WAL，只保存查询索引。`run.json`、`episode.json` 和 RawBundle 是事实来源；`lsm store reindex` 可以重建数据库。
+`.lsm/index.sqlite3` 使用 WAL，只保存查询索引。`run.json`、`episode.json`、RawBundle、evaluation manifest、dataset manifest 和 analysis manifest 是事实来源；`lsm store reindex` 可以重建 run、episode、evaluation 与 analysis 索引。
 
 进程意外终止时，未完成 run 保持 `running`，`lsm run reconcile` 会将其标为 `orphaned`，不会猜测 completed。导出支持 JSONL、CSV 和包含原始证据的 tar.gz。
 

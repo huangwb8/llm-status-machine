@@ -8,7 +8,6 @@ from pathlib import Path
 
 COUNT_LINE = re.compile(r"^EVALUATOR_COUNT = (3|6|9)$", re.MULTILINE)
 EXPECTED_SEED = 20260810
-EXPECTED_ORDER = [9, 3, 6]
 
 
 def main() -> None:
@@ -21,8 +20,10 @@ def main() -> None:
         raise ValueError(f"pilot seed must be {EXPECTED_SEED}")
     if header["concurrency"] != 1 or header["state_policy"] != "independent":
         raise ValueError("study must be serial at the top level with independent workspaces")
-    if len(trials) != 3:
-        raise ValueError("pilot must contain exactly three trials")
+    if header["study_mode"] != "confirmatory" or not header["diagnostics"]["confirmatory_valid"]:
+        raise ValueError("study must pass the confirmatory design gate")
+    if len(trials) != 9:
+        raise ValueError("confirmatory study must contain three episodes per arm")
     counts = []
     normalized_hashes = set()
     controls = []
@@ -45,17 +46,29 @@ def main() -> None:
                 sort_keys=True,
             )
         )
-    if sorted(counts) != [3, 6, 9]:
+    if sorted(counts) != [3, 3, 3, 6, 6, 6, 9, 9, 9]:
         raise ValueError(f"unexpected treatments: {counts}")
-    if counts != EXPECTED_ORDER:
-        raise ValueError(f"unexpected randomized execution order: {counts}")
     if len(normalized_hashes) != 1 or len(set(controls)) != 1:
         raise ValueError("trials differ outside the evaluator-count treatment")
+    positions = {
+        count: sorted(
+            trial["sequence_position"]
+            for count_value, trial in zip(counts, trials, strict=True)
+            if count_value == count
+        )
+        for count in (3, 6, 9)
+    }
+    if any(value != [1, 2, 3] for value in positions.values()):
+        raise ValueError(f"sequence positions are not balanced: {positions}")
+    comparison_sets = {trial["comparison_set_id"] for trial in trials}
+    if len(comparison_sets) != 3 or any(trial.get("randomization") is None for trial in trials):
+        raise ValueError("comparison set or randomization provenance is incomplete")
     print(
         json.dumps(
             {
                 "valid": True,
                 "execution_order": counts,
+                "sequence_positions": positions,
                 "normalized_prompt_sha256": next(iter(normalized_hashes)),
                 "model": trials[0]["endpoint"]["model_id"],
                 "reasoning_effort": trials[0]["profile"]["reasoning_effort"],

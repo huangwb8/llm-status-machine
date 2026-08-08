@@ -6,16 +6,41 @@
 source("00.Environment.R")
 source("quality_analysis_functions.R")
 
-input_path <- file.path("..", "results", "pilot.csv")
+input_path <- Sys.getenv("LSM_OBSERVATIONS_CSV", unset = file.path("..", "results", "pilot.csv"))
 output_dir <- file.path("tmp", "quality_analysis")
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 if (!file.exists(input_path)) stop("Missing scored pilot input: ", input_path)
 
 processed_data <- utils::read.csv(input_path, stringsAsFactors = FALSE, check.names = FALSE)
+if ("arm_id" %in% names(processed_data)) {
+  processed_data$evaluator_count <- as.integer(sub("^evaluators-", "", processed_data$arm_id))
+  processed_data$quality_score <- as.numeric(processed_data[["metric.oracle.quality_score"]])
+  processed_data$oracle_code_score <- processed_data$quality_score
+  processed_data$scorer_status <- ifelse(
+    is.na(processed_data[["metric_missing_reason.oracle.quality_score"]]), "ok", "failed"
+  )
+  processed_data$order_position <- processed_data$ordinal
+  processed_data$delivery_completed <- processed_data$episode_status == "completed"
+  processed_data$protocol_ok <- processed_data$process_status == "completed" &
+    processed_data$protocol_status == "completed" &
+    processed_data$capture_status == "completed" &
+    processed_data$workspace_status == "completed"
+  processed_data$requested_evaluators <- processed_data$evaluator_count
+  processed_data$completed_evaluators <- NA_integer_
+  processed_data$summary_count <- NA_integer_
+  processed_data$executor_count <- 1L
+  category_names <- c("api_quality", "basic_ttl", "failure_cancel", "invalidation_race", "lru_capacity", "single_flight")
+  for (category in category_names) {
+    processed_data[[paste0("score_", category)]] <- as.numeric(
+      processed_data[[paste0("metric.oracle.category_", category)]]
+    )
+  }
+}
 if (anyDuplicated(processed_data$episode_id)) stop("episode_id must be unique")
 if (any(processed_data$scorer_status != "ok")) stop("all pilot oracle runs must succeed")
-if (!identical(sort(processed_data$evaluator_count), c(3L, 6L, 9L))) {
-  stop("pilot must contain exactly one episode for evaluator counts 3, 6, and 9")
+counts <- table(processed_data$evaluator_count)
+if (!identical(as.integer(names(counts)), c(3L, 6L, 9L)) || length(unique(counts)) != 1L) {
+  stop("input must contain equally many episodes for evaluator counts 3, 6, and 9")
 }
 
 processed_data$protocol_ok <- as.logical(processed_data$protocol_ok)

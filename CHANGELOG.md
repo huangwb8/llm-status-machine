@@ -4,11 +4,18 @@
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-08-08
+
 ### Removed（移除）
 
 - 移除已废弃的旧 Node/Web file-store 数据迁移 CLI、实现、测试、迁移资料和历史 Node/Web 计划；本地 `var/legacy-node/` 历史数据不再保留，并将应用版本升至 `1.0.0`。
 
 ### Added（新增）
+
+- 新增 StudySpec/TrialPlan v2 严谨研究契约：确认性门禁、平衡随机化、显式 arm/comparison set/pair/block/sequence/dispatch provenance，以及冻结的 EvaluationSpec、OutcomeSpec、ContrastSpec 与 AnalysisSpec。
+- 新增计划内盲化批量评分：支持 execution-integrity 与 pinned command scorer、只读 sealed snapshot、严格 metric schema、多评分聚合、Krippendorff's alpha、幂等 evaluation manifest 和解盲映射。
+- 新增 episode 级 research dataset、full-factorial/matched-pair/block 设计型 bootstrap 与随机化检验、Holm 校正、Markdown/JSON 报告和连续/二元两臂功效计算；NumPy/SciPy 位于独立 `analysis` extra。
+- 新增无需密钥的 `lsm research smoke`，覆盖 compile → run → evaluate → dataset → infer → report 全链路。
 
 - 新增 `examples/subagent-count-quality-study/` 可复现实验，比较 Codex + GPT-5.6 Sol medium 工作流中 3、6、9 个评估类 subagent 的软件开发质量，并提供绑定 sealed final commit 的盲化 oracle 评分与 R Markdown 分析。
 - 新增 Python 3.12+ `lsm` CLI、Typer/Rich 输出、Pydantic typed domain、稳定 JSONL TrialPlan、SQLite WAL 索引与可重建文件存储。
@@ -40,6 +47,9 @@
 
 ### Changed（变更）
 
+- 应用版本升级至 `2.0.0`，并拆分 Study、TrialPlan、Run、RawBundle、Event、Evaluation、Analysis 与 Index schema version；v1 Study/Plan 只读迁移为 exploratory，未来 schema 早期失败。
+- subagent-count-quality 示例的后续复现实验改用通用 command scorer、episode dataset 与预注册 contrasts；历史 pilot 及专用评分脚本继续保留为描述性记录。
+
 - 按生命周期收束仓库目录：迁移核验、架构、历史诉求和 Node/Web 计划分别归入稳定分类；legacy CLI 改为必须显式指定 source 路径，本地旧 file store 隔离到被忽略的 `var/legacy-node/`。
 - Codex adapter 现在把 execution profile 的 sandbox 权限、ephemeral 会话和 RawBundle artifact 写入目录落实到实际 argv；对暂时无法兑现的 config/research/network 组合会在启动前明确拒绝。
 - 项目从 Node.js + Express + React/Vite Web 应用重构为 Python 3.12 本地 CLI；应用版本升级为 `0.2.0`，并与 schema version 分离。
@@ -58,6 +68,7 @@
 
 ### Fixed（修复）
 
+- 修复研究评分与推断的完整性边界：缺失计划 episode 不再被批量评分误报为完成或提前解盲，dataset 会拒绝重复/错配 evaluation 与 episode assignment，确认性 primary outcome 必须有 contrast，量纲外 policy value 与非法 nominal 聚合会在编译前失败；同时修正缺失评委下的 Krippendorff's alpha 加权、`missing_policy=error` 语义、纯描述性分析状态及报告中的标准化效应展示。
 - 修复 subagent 数量示例中评分现场 workspace、失效世代竞态漏测、scorer failure 列结构不稳定与固定升序复现实验设计问题；后续运行改用预注册非单调随机顺序，现有 pilot 明确降级为顺序混杂的描述性观察。
 - 修复通用 `shell: true` 命令注入面、宿主 PATH 隐式版本漂移、无界并发、超时只终止直接子进程、parser 覆盖 raw evidence 和未 seal 仍可能完成的问题。
 - 修复 Simulator runtime 解引用虚拟环境解释器 symlink 后丢失已安装包的问题，并加入回归测试。

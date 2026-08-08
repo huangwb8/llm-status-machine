@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from llm_status_machine.utils import canonical_json, read_json, sha256_bytes, sha256_file, write_json
-from llm_status_machine.version import SCHEMA_VERSION
+from llm_status_machine.version import RAW_BUNDLE_SCHEMA_VERSION
 
 
 def resolve_bundle_path(episode_root: Path, episode: dict[str, Any]) -> Path:
@@ -46,7 +46,7 @@ class RawBundle:
     def seal(self, *, run_id: str, episode_id: str, attempt_id: str) -> dict[str, Any]:
         files = bundle_manifest(self.root)
         seal = {
-            "schema_version": SCHEMA_VERSION,
+            "schema_version": RAW_BUNDLE_SCHEMA_VERSION,
             "run_id": run_id,
             "episode_id": episode_id,
             "attempt_id": attempt_id,
@@ -69,6 +69,8 @@ def validate_seal(root: Path) -> tuple[bool, list[str]]:
     seal = read_json(seal_path)
     actual = bundle_manifest(root)
     errors: list[str] = []
+    if seal.get("schema_version") != RAW_BUNDLE_SCHEMA_VERSION:
+        errors.append(f"unsupported RawBundle schema_version: {seal.get('schema_version')}")
     if actual != seal.get("files"):
         errors.append("bundle file manifest mismatch")
     if sha256_bytes(canonical_json(actual)) != seal.get("bundle_sha256"):

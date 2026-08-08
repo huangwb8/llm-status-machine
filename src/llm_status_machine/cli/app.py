@@ -7,21 +7,34 @@ import shutil
 import sys
 import tarfile
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Never
 
 import typer
 import yaml
 from rich.console import Console
 from rich.table import Table
 
+from llm_status_machine.analysis.dataset import build_dataset
+from llm_status_machine.analysis.inference import infer_run, rebuild_report
+from llm_status_machine.analysis.power import estimate_power
 from llm_status_machine.domain.models import (
+    AnalysisSpec,
+    ContrastSpec,
+    Design,
+    EvaluationSpec,
     ExecutionProfile,
+    MetricSpec,
+    MetricType,
     ModelEndpoint,
+    OutcomeSpec,
     PromptRevision,
+    ScorerSpec,
     StatePolicy,
+    StudyMode,
     StudySpec,
     WorkspaceFixture,
 )
+from llm_status_machine.evaluation.runner import evaluate_run
 from llm_status_machine.evaluation.scorer import score_episode
 from llm_status_machine.execution.runner import RunEngine
 from llm_status_machine.harnesses.base import list_adapters
@@ -36,7 +49,17 @@ from llm_status_machine.runtimes.providers import (
 from llm_status_machine.storage.index import IndexStore
 from llm_status_machine.study.compiler import compile_study, load_plan, load_study, plan_bytes, write_plan
 from llm_status_machine.utils import read_json, utc_now, write_json
-from llm_status_machine.version import SCHEMA_VERSION, __version__
+from llm_status_machine.version import (
+    ANALYSIS_SCHEMA_VERSION,
+    EVALUATION_SCHEMA_VERSION,
+    EVENT_SCHEMA_VERSION,
+    INDEX_SCHEMA_VERSION,
+    RAW_BUNDLE_SCHEMA_VERSION,
+    RUN_SCHEMA_VERSION,
+    STUDY_SCHEMA_VERSION,
+    TRIAL_PLAN_SCHEMA_VERSION,
+    __version__,
+)
 from llm_status_machine.workspaces.backend import build_manifest
 
 app = typer.Typer(no_args_is_help=True, help="可审计的本地 LLM Harness 行为实验台")
@@ -47,6 +70,7 @@ study_app = typer.Typer(no_args_is_help=True)
 run_app = typer.Typer(no_args_is_help=True)
 episode_app = typer.Typer(no_args_is_help=True)
 evaluate_app = typer.Typer(no_args_is_help=True)
+research_app = typer.Typer(no_args_is_help=True)
 export_app = typer.Typer(no_args_is_help=True)
 store_app = typer.Typer(no_args_is_help=True)
 for name, subapp in (
@@ -57,6 +81,7 @@ for name, subapp in (
     ("run", run_app),
     ("episode", episode_app),
     ("evaluate", evaluate_app),
+    ("research", research_app),
     ("export", export_app),
     ("store", store_app),
 ):
@@ -82,6 +107,21 @@ def _emit(value: Any, as_json: bool) -> None:
         console.print(table)
     else:
         console.print(value)
+
+
+def _command_error(error: Exception, as_json: bool) -> Never:
+    if as_json:
+        _emit(
+            {
+                "status": "failed",
+                "confirmatory_valid": False,
+                "warnings": [],
+                "errors": [f"{type(error).__name__}: {error}"],
+            },
+            True,
+        )
+        raise typer.Exit(1)
+    raise typer.BadParameter(str(error)) from error
 
 
 def _find_episode(data_root: Path, episode_id: str) -> Path:
@@ -146,7 +186,19 @@ def doctor(
         "git": {"ok": shutil.which("git") is not None, "value": shutil.which("git")},
         "data_root": {"ok": data_root.parent.exists(), "value": str(data_root.resolve())},
         "disk_free_bytes": {"ok": True, "value": shutil.disk_usage(data_root.parent).free},
-        "schema_version": {"ok": True, "value": SCHEMA_VERSION},
+        "schema_versions": {
+            "ok": True,
+            "value": {
+                "study": STUDY_SCHEMA_VERSION,
+                "trial_plan": TRIAL_PLAN_SCHEMA_VERSION,
+                "raw_bundle": RAW_BUNDLE_SCHEMA_VERSION,
+                "run": RUN_SCHEMA_VERSION,
+                "event": EVENT_SCHEMA_VERSION,
+                "evaluation": EVALUATION_SCHEMA_VERSION,
+                "analysis": ANALYSIS_SCHEMA_VERSION,
+                "index": INDEX_SCHEMA_VERSION,
+            },
+        },
     }
     _emit({"ok": all(check["ok"] for check in checks.values()), "checks": checks}, as_json)
     if not all(check["ok"] for check in checks.values()):
@@ -252,8 +304,25 @@ def workspace_snapshot(
 
 @study_app.command("validate")
 def study_validate(path: Path, as_json: Annotated[bool, typer.Option("--json")] = False) -> None:
-    spec = load_study(path)
-    _emit({"valid": True, "name": spec.name, "repeats": spec.repeats}, as_json)
+    try:
+        spec = load_study(path)
+        plan = compile_study(spec)
+    except (OSError, TypeError, ValueError) as error:
+        _command_error(error, as_json)
+    _emit(
+        {
+            "status": "completed",
+            "valid": True,
+            "name": spec.name,
+            "repeats": spec.repeats,
+            "study_mode": spec.study_mode,
+            "confirmatory_valid": plan.diagnostics["confirmatory_valid"],
+            "diagnostics": plan.diagnostics,
+            "warnings": spec.migration_warnings,
+            "errors": [],
+        },
+        as_json,
+    )
 
 
 @study_app.command("compile")
@@ -262,14 +331,23 @@ def study_compile(
     output: Path,
     as_json: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
-    plan = compile_study(load_study(path))
-    write_plan(plan, output)
+    try:
+        plan = compile_study(load_study(path))
+        write_plan(plan, output)
+    except (OSError, TypeError, ValueError) as error:
+        _command_error(error, as_json)
     _emit(
         {
             "plan_id": plan.id,
             "episodes": len(plan.trials),
             "sha256": __import__("hashlib").sha256(plan_bytes(plan)).hexdigest(),
             "output": str(output),
+            "status": "completed",
+            "study_mode": plan.study_mode,
+            "confirmatory_valid": plan.diagnostics["confirmatory_valid"],
+            "diagnostics": plan.diagnostics,
+            "warnings": plan.migration_warnings,
+            "errors": [],
         },
         as_json,
     )
@@ -286,6 +364,32 @@ def study_estimate(path: Path, as_json: Annotated[bool, typer.Option("--json")] 
         / max(plan.concurrency, 1),
     }
     _emit(estimate, as_json)
+
+
+@study_app.command("power")
+def study_power(
+    path: Path,
+    metric_type: Annotated[str, typer.Option("--metric-type")],
+    effect: Annotated[float, typer.Option("--effect")],
+    standard_deviation: Annotated[float | None, typer.Option("--standard-deviation")] = None,
+    baseline_rate: Annotated[float | None, typer.Option("--baseline-rate")] = None,
+    power: Annotated[float, typer.Option("--power")] = 0.8,
+    alpha: Annotated[float | None, typer.Option("--alpha")] = None,
+    as_json: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    try:
+        spec = load_study(path)
+        result = estimate_power(
+            metric_type=metric_type,
+            effect=effect,
+            alpha=alpha if alpha is not None else spec.analysis.alpha,
+            power=power,
+            standard_deviation=standard_deviation,
+            baseline_rate=baseline_rate,
+        )
+    except (OSError, RuntimeError, TypeError, ValueError) as error:
+        _command_error(error, as_json)
+    _emit(result, as_json)
 
 
 @run_app.command("start")
@@ -400,6 +504,95 @@ def evaluate_episode(
     _emit(score_episode(_find_episode(data_root, episode_id)), as_json)
 
 
+@evaluate_app.command("run")
+def evaluate_whole_run(
+    run_id: str,
+    data_root: Path = Path(".lsm"),
+    as_json: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    run_root = data_root / "runs" / run_id
+    if not run_root.is_dir():
+        _command_error(ValueError(f"run not found: {run_id}"), as_json)
+    try:
+        result = evaluate_run(run_root, index_path=data_root / "index.sqlite3")
+    except (OSError, RuntimeError, TypeError, ValueError) as error:
+        _command_error(error, as_json)
+    _emit(result, as_json)
+    if result["status"] != "completed":
+        raise typer.Exit(1)
+
+
+@research_app.command("dataset")
+def research_dataset(
+    run_id: str,
+    data_root: Path = Path(".lsm"),
+    as_json: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    run_root = data_root / "runs" / run_id
+    if not run_root.is_dir():
+        _command_error(ValueError(f"run not found: {run_id}"), as_json)
+    try:
+        result = build_dataset(run_root)
+    except (OSError, RuntimeError, TypeError, ValueError) as error:
+        _command_error(error, as_json)
+    _emit(
+        {
+            "status": result["status"],
+            "dataset_id": result["id"],
+            "row_count": result["row_count"],
+            "path": result["path"],
+            "confirmatory_valid": result["confirmatory_valid"],
+            "warnings": result["warnings"],
+            "errors": result["errors"],
+        },
+        as_json,
+    )
+
+
+@research_app.command("infer")
+def research_infer(
+    run_id: str,
+    data_root: Path = Path(".lsm"),
+    as_json: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    run_root = data_root / "runs" / run_id
+    if not run_root.is_dir():
+        _command_error(ValueError(f"run not found: {run_id}"), as_json)
+    try:
+        dataset = build_dataset(run_root)
+        result = infer_run(run_root, dataset, index_path=data_root / "index.sqlite3")
+    except (OSError, RuntimeError, TypeError, ValueError) as error:
+        _command_error(error, as_json)
+    _emit(result, as_json)
+
+
+@research_app.command("report")
+def research_report(
+    analysis_id: str,
+    data_root: Path = Path(".lsm"),
+    as_json: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    matches = list((data_root / "runs").glob(f"*/research/analyses/{analysis_id}"))
+    if len(matches) != 1:
+        _command_error(ValueError(f"analysis not found or ambiguous: {analysis_id}"), as_json)
+    try:
+        output = rebuild_report(matches[0])
+        results = read_json(matches[0] / "results.json")
+    except (OSError, RuntimeError, TypeError, ValueError) as error:
+        _command_error(error, as_json)
+    _emit(
+        {
+            "status": "completed",
+            "analysis_id": analysis_id,
+            "report": str(output),
+            "confirmatory_valid": results["confirmatory_valid"],
+            "warnings": results["warnings"],
+            "errors": [],
+        },
+        as_json,
+    )
+
+
 @export_app.command("run")
 def export_run(run_id: str, output: Path, data_root: Path = Path(".lsm"), format: str = "archive") -> None:
     run_root = data_root / "runs" / run_id
@@ -484,6 +677,101 @@ def smoke(
         engine.close()
     _emit(result | {"root": str(root), "plan": str(plan_path)}, as_json)
     if result["status"] != "completed":
+        raise typer.Exit(1)
+
+
+@research_app.command("smoke")
+def research_smoke(
+    root: Annotated[Path, typer.Option("--root")] = Path("tmp/research-smoke"),
+    as_json: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    root = root.resolve()
+    if root.exists():
+        raise typer.BadParameter(f"research smoke root already exists: {root}")
+    workspace = root / "source"
+    data_root = root / "data"
+    workspace.mkdir(parents=True)
+    (workspace / "README.md").write_text("# Research smoke workspace\n", encoding="utf-8")
+    metric = MetricSpec(
+        id="workspace_completed",
+        type=MetricType.BINARY,
+        direction="higher",
+        lower_bound=0,
+        upper_bound=1,
+    )
+    scorer = ScorerSpec(id="integrity", metrics=[metric], repetitions=2)
+    outcome = OutcomeSpec(
+        id="primary_integrity",
+        scorer_id="integrity",
+        metric_id="workspace_completed",
+        role="primary",
+        type=MetricType.BINARY,
+        direction="higher",
+        lower_bound=0,
+        upper_bound=1,
+        failure_policy="worst_case",
+        missing_policy="error",
+    )
+    spec = StudySpec(
+        name="research-smoke",
+        study_mode=StudyMode.CONFIRMATORY,
+        seed=20260808,
+        repeats=4,
+        concurrency=1,
+        state_policy=StatePolicy.INDEPENDENT,
+        design=Design.MATCHED_PAIR,
+        prompts=[
+            PromptRevision(id="control", body="Do the task conservatively"),
+            PromptRevision(id="treatment", body="Do the task carefully and verify it"),
+        ],
+        workspace=WorkspaceFixture(path=str(workspace)),
+        runtime=simulator_runtime(),
+        evaluation=EvaluationSpec(scorers=[scorer]),
+        analysis=AnalysisSpec(
+            outcomes=[outcome],
+            contrasts=[
+                ContrastSpec(
+                    id="treatment-v-control",
+                    outcome_id=outcome.id,
+                    treatment_arm="treatment",
+                    control_arm="control",
+                    estimand="risk_difference",
+                )
+            ],
+            permutations=1_000,
+            bootstrap_samples=500,
+            seed=20260808,
+        ),
+    )
+    plan = compile_study(spec)
+    plan_path = root / "plan.jsonl"
+    write_plan(plan, plan_path)
+    engine = RunEngine(data_root)
+    try:
+        run = asyncio.run(engine.run(plan))
+    finally:
+        engine.close()
+    if run["status"] != "completed":
+        raise RuntimeError("research smoke execution failed")
+    run_root = data_root / "runs" / run["id"]
+    evaluation = evaluate_run(run_root, index_path=data_root / "index.sqlite3")
+    dataset = build_dataset(run_root)
+    analysis = infer_run(run_root, dataset, index_path=data_root / "index.sqlite3")
+    result = {
+        "status": "completed",
+        "confirmatory_valid": analysis["confirmatory_valid"],
+        "run_id": run["id"],
+        "episodes": len(run["episodes"]),
+        "comparison_sets": plan.diagnostics["comparison_set_count"],
+        "evaluation_count": evaluation["evaluation_count"],
+        "dataset_id": dataset["id"],
+        "analysis_id": analysis["analysis_id"],
+        "root": str(root),
+        "warnings": analysis["warnings"],
+        "errors": [],
+    }
+    _emit(result, as_json)
+    if not result["confirmatory_valid"]:
         raise typer.Exit(1)
 
 
