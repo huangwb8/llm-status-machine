@@ -1,8 +1,8 @@
 # 错误先验洗脱、记忆中介与证据门控实验
 
-这个示例把 [`docs/plans/prior-washout-evidence-gating-study.md`](../../docs/plans/prior-washout-evidence-gating-study.md) 落成一个可运行的**确定性基础设施资格实验**。它用五个预注册实验臂、六个符号回归任务和三阶段协议，端到端检验 LLM Status Machine 当前的 Prompt、runtime、计划、调度、RawBundle、Git 快照、seal、盲化评分、episode 级数据集、统计推断、store 和 export 能力。
+这个示例把 [`docs/plans/prior-washout-evidence-gating-study.md`](../../docs/plans/prior-washout-evidence-gating-study.md) 落成两条相互隔离的路径：无需模型的确定性基础设施资格实验，以及每个 episode 启动三个全新 Codex CLI 进程的真实 A → B → C 行为协议。两条路径共用五个预注册实验臂、六个符号回归任务、RawBundle、Git 快照、seal、盲化评分和 episode 级推断，但资格轨迹绝不进入真实模型结论。
 
-资格 Harness 不调用 LLM，而是产生固定的候选轨迹，因此运行结果只能证明软件链路能正确区分已知轨迹，不能证明真实模型存在错误先验持续、记忆中介或门控收益。真实 LLM pilot 必须在独立预注册后，把这个确定性替身换成会启动三个新鲜 CLI 进程的外部 orchestrator；当前 TrialPlan 没有 episode 内 stage schema，这个边界不会在示例里被掩盖。
+资格 Harness 不调用 LLM，而是产生固定候选轨迹，因此资格结果只能证明软件链路能正确区分已知轨迹。真实路径由外部 orchestrator 在一个 episode 内依次启动三个 `codex exec --ephemeral` 进程，并把阶段身份、原始流、候选和状态转换写入同一个 sealed episode；统计单位仍是 episode，而不是 stage 或候选。
 
 ## 实验设计
 
@@ -25,6 +25,38 @@ flowchart LR
 五臂为 `neutral-open`、`correct-open`、`false-open`、`false-gated` 和 `false-purged`。Prompt 都从 `prompts/prompt-template.md` 物化，只允许 `PRIOR` 与 `MEMORY` 两个标记区域不同。确认性资格计划使用 `seed=20260808`、`repeats=5`、`concurrency=1`、`state_policy=independent`，生成 25 个 episode；每个 arm 在 comparison set 的位置 1–5 各出现一次。
 
 主要资格指标 IFO-AUC 是阶段 B/C 中仍落在已知错误候选上的比例。隐藏 scorer 还计算结构恢复率、远端 OOD-NMSE 和协议完整性。三个预注册 contrast 进入同一个 Holm family。固定轨迹应让 `false-open` 保持错误 motif，而 `false-gated` 和 `false-purged` 脱离；这是 scorer 与 inference 的 golden signal，不是待发表的模型效应。
+
+## 真实 Codex 协议
+
+真实运行入口是 `scripts/run_real_study.py`。它只接收项目外已有的 `CODEX_HOME` 环境引用，不复制或写入 `auth.json`、`config.toml`、API key、Cookie 或外部配置路径。nested Codex 使用 pinned executable digest、明确模型和 reasoning effort，并通过 Permission Profile 把模型命令限制到最小运行库和当前 stage workspace；命令网络与 web search 均禁用。
+
+每个 episode 固定执行：
+
+- A：只看训练观测和分配到的先验，产生每任务三个候选；
+- B：使用全新进程和 thread，加入独立验证观测，并按 `open`、`gated` 或 `purged` 重建状态；
+- C：再次使用全新进程和 thread，完成恢复与最终提交；
+- 结束后记录 54 条候选、三个 PID/thread、raw stdout/stderr、workspace snapshot、Git commit/diff、seal 和重复盲评。
+
+```bash
+export CODEX_HOME=/path/outside/this/repository
+
+uv run python examples/prior-washout-evidence-gating-study/scripts/run_real_study.py \
+  --mode shakedown \
+  --root tmp/prior-washout-real-shakedown \
+  --model gpt-5.6-sol \
+  --reasoning-effort low \
+  --stage-timeout 900
+```
+
+`--mode pilot` 默认运行每臂 5 个 episode；`--mode confirmatory` 默认每臂 35 个。输出根必须尚不存在。含失败 episode 的 run 会继续执行 seal、盲评和 dataset 构建，失败值按预注册 intention-to-treat 规则处理，不自动 retry。
+
+## 真实 Pilot 结果
+
+2026-08-09 完成的探索性 pilot 使用 `gpt-5.6-sol`、low reasoning、`seed=20260811`、`concurrency=1` 和 900 秒 stage timeout。25 个 episode 全部封存，24 个 completed，1 个 `neutral-open` 在 C 阶段 timeout；74/75 个 stage 完成，25 个 seal 全部有效，重复 symbolic oracle 评分一致性为 1.0，凭据边界扫描为 0 命中。
+
+描述性 IFO-AUC 对比为：`false-open − neutral-open = -0.1722`、`false-gated − false-open = -0.0278`、`false-purged − false-open = -0.0389`，三个 Holm-adjusted p 值均为 0.8571。neutral 对比被 timeout 的最坏值明显牵引；这些结果只用于方差、失败率和成本冻结，不能回答确认性研究问题。完整脱敏摘要见 [`results/real-codex-pilot-20260809-summary.json`](results/real-codex-pilot-20260809-summary.json)。
+
+正式样本量按预注册 `MDE=0.25`、双侧 `alpha=0.05/3`、power 0.80 和 `sigma_used=max(0.30, pilot pooled SD 的单侧 95% 上界)` 计算。pilot pooled SD 为 0.1824，上界为 0.2477，因此 `sigma_used=0.30`；power 结果为 31/臂，按五臂 sequence-position 平衡上取整为 35/臂，即 175 episode、525 次 Codex 进程。正式运行在显式 token/费用上限获批前保持停止。
 
 ## 一键资格测试
 
@@ -110,6 +142,6 @@ scripts/                 fixture、StudySpec、计划门禁、recorder 与一键
 results/                 只允许未来提交脱敏 episode 级结果
 ```
 
-## 真实 LLM pilot 的停止门禁
+## 正式实验停止门禁
 
-真实 pilot 前必须另行完成：锁定 nested Codex/Claude build 与模型端点；让外部 orchestrator 真正启动三个互不复用 session 的进程；验证阶段 B/C Prompt 不含阶段 A 先验；证明 gate/purge 的删除不可从残留文件恢复；冻结候选预算、timeout、MDE 和失败策略。未满足这些条件时，本示例保持“基础设施资格实验”标签。
+正式实验使用独立 `seed=20260812`，不得合并资格或 pilot 数据。启动前还必须显式冻结 token/费用停止阈值；运行中不得按 arm、候选质量或临时 p 值提前停止。若完整预算不足，研究保持探索性 pilot 标签，不把 25 条 pilot 轨迹冒充正式证据。

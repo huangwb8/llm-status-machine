@@ -11,9 +11,12 @@
 ### Added（新增）
 
 - 新增 `examples/prior-washout-evidence-gating-study/` 确定性基础设施资格实验：以五臂三阶段符号回归协议覆盖 Prompt、pinned custom runtime、稳定 TrialPlan、独立调度、RawBundle、Git/seal、盲化评分、episode 数据集、推断、报告、store、export 与 recorder 故障注入，并明确隔离真实 LLM pilot 的行为结论边界。
+- 为先验洗脱实验新增真实 Codex 三阶段 orchestrator、安全 Permission Profile、确定性 open/gated/purged 状态重建、AST 函数族盲评与 shakedown/pilot/confirmatory runner；每个 episode 固定使用三个全新 ephemeral PID/thread，并只引用项目外 `CODEX_HOME`。
+- 完成 25-episode 真实 Codex exploratory pilot，保存脱敏结果摘要和正式实验预注册：正式样本量冻结为每臂 35、共 175 episode，启动前仍需显式批准 token/费用上限。
 
 ### Fixed（修复）
 
+- 修复真实研究 runner 遇到已完整封存但包含失败 episode 的 run 时提前退出、无法继续 seal 验证和 intention-to-treat 评分的问题；同时在 runner 被中断时终止整个子进程组，避免遗留 nested Codex 孤儿进程。
 - 强化 workspace 与 RawBundle 边界：Git 元数据移出模型可写目录，seal 拒绝 symlink、hardlink 和特殊文件，nested stdout/stderr 先在项目外捕获并脱敏后再写入证据包。
 - 修复公开 `harness lock --surface simulator` 解引用虚拟环境 Python launcher、导致计划运行时丢失已安装包的问题；同时让 command scorer 编译阶段冻结 shebang 解释器、自动 pin 脚本，并让 subagent-count-quality 示例显式固定 Python 3.12 scorer runtime 与全部评分源码。
 - 修复 `custom_command` 的 `{workspace}` 占位符错误展开到 episode 的 `attempts/workspace`、导致自定义 Harness 无法访问实际隔离 workspace 的问题。

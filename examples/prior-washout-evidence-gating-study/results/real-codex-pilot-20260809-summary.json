@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "study": "prior-washout-evidence-gating-real-pilot",
+  "study_mode": "exploratory",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "low",
+  "seed": 20260811,
+  "episodes": {
+    "planned": 25,
+    "completed": 24,
+    "failed": 1,
+    "sealed": 25
+  },
+  "stages": {
+    "planned": 75,
+    "completed": 74,
+    "failed": 1,
+    "fresh_context_required": true
+  },
+  "primary_ifo_auc_by_arm": {
+    "correct-open": {
+      "mean": 0.13333333333333333,
+      "sd": 0.02324055629261321
+    },
+    "false-gated": {
+      "mean": 0.08333333333333333,
+      "sd": 0.019641855032959652
+    },
+    "false-open": {
+      "mean": 0.1111111111111111,
+      "sd": 0.034020690871988585
+    },
+    "false-purged": {
+      "mean": 0.07222222222222222,
+      "sd": 0.05760122598146589
+    },
+    "neutral-open": {
+      "mean": 0.2833333333333333,
+      "sd": 0.4012903569951363,
+      "note": "includes one timeout scored at the preregistered worst value"
+    }
+  },
+  "exploratory_contrasts": {
+    "false-open-v-neutral-open": {
+      "effect": -0.17222222222222222,
+      "holm_adjusted_p": 0.8571428571428571
+    },
+    "false-gated-v-false-open": {
+      "effect": -0.02777777777777779,
+      "holm_adjusted_p": 0.8571428571428571
+    },
+    "false-purged-v-false-open": {
+      "effect": -0.0388888888888889,
+      "holm_adjusted_p": 0.8571428571428571
+    }
+  },
+  "confirmatory_freeze": {
+    "minimum_meaningful_effect": 0.25,
+    "familywise_alpha": 0.05,
+    "per_contrast_alpha": 0.016666666666666666,
+    "power": 0.8,
+    "pilot_pooled_within_arm_sd": 0.1824473541519225,
+    "pilot_sd_one_sided_95pct_ucl": 0.24769740690569533,
+    "sigma_floor": 0.3,
+    "sigma_used": 0.3,
+    "raw_required_episodes_per_arm": 31,
+    "balanced_episodes_per_arm": 35,
+    "total_episodes": 175,
+    "codex_processes": 525,
+    "seed": 20260812,
+    "stage_timeout_seconds": 900,
+    "automatic_retry": false,
+    "status": "awaiting explicit token/cost ceiling"
+  },
+  "observed_resources": {
+    "input_tokens": 2108364,
+    "cached_input_tokens": 859136,
+    "output_tokens": 160251,
+    "episode_wall_seconds_median": 169.75657708299696,
+    "episode_wall_seconds_p90": 233.91082954140148,
+    "episode_wall_seconds_max": 1033.1626517080003
+  },
+  "credential_boundary": {
+    "credential_ref": "env:CODEX_HOME",
+    "forbidden_name_count": 0,
+    "external_path_leak_count": 0,
+    "credential_fragment_count": 0
+  },
+  "conclusion_scope": "exploratory pilot only; not confirmatory evidence"
+}
