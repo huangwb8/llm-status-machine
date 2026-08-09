@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -19,13 +20,27 @@ def resolve_bundle_path(episode_root: Path, episode: dict[str, Any]) -> Path:
     return Path(episode["bundle"])
 
 
+def regular_file_metadata(path: Path, root: Path) -> dict[str, Any]:
+    info = path.lstat()
+    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+        relative = path.relative_to(root).as_posix()
+        raise ValueError(f"RawBundle entry must be a regular single-link file: {relative}")
+    return {
+        "path": path.relative_to(root).as_posix(),
+        "size": info.st_size,
+        "sha256": sha256_file(path),
+    }
+
+
 def bundle_manifest(root: Path) -> list[dict[str, Any]]:
     files: list[dict[str, Any]] = []
     for path in sorted(root.rglob("*")):
-        if not path.is_file() or path.name == "seal.json":
+        if path.name == "seal.json":
             continue
-        relative = path.relative_to(root).as_posix()
-        files.append({"path": relative, "size": path.stat().st_size, "sha256": sha256_file(path)})
+        info = path.lstat()
+        if stat.S_ISDIR(info.st_mode):
+            continue
+        files.append(regular_file_metadata(path, root))
     return files
 
 
@@ -67,7 +82,10 @@ def validate_seal(root: Path) -> tuple[bool, list[str]]:
     if not seal_path.exists():
         return False, ["missing seal.json"]
     seal = read_json(seal_path)
-    actual = bundle_manifest(root)
+    try:
+        actual = bundle_manifest(root)
+    except ValueError as error:
+        return False, [str(error)]
     errors: list[str] = []
     if seal.get("schema_version") != RAW_BUNDLE_SCHEMA_VERSION:
         errors.append(f"unsupported RawBundle schema_version: {seal.get('schema_version')}")

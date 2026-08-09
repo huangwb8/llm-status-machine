@@ -10,7 +10,7 @@ from typing import Any
 
 from llm_status_machine.domain.models import AttemptOutcomes, Outcome, StatePolicy, Trial, TrialPlan
 from llm_status_machine.harnesses.base import get_adapter
-from llm_status_machine.recording.bundle import RawBundle
+from llm_status_machine.recording.bundle import RawBundle, regular_file_metadata
 from llm_status_machine.recording.recorder import ProcessResult, record_process
 from llm_status_machine.storage.index import IndexStore
 from llm_status_machine.utils import sha256_file, stable_id, utc_now, write_json
@@ -190,14 +190,9 @@ class RunEngine:
             raw.write_bytes("diff.patch", diff)
             artifacts = []
             for artifact in sorted((raw.root / "artifacts").rglob("*")):
-                if artifact.is_file():
-                    artifacts.append(
-                        {
-                            "path": artifact.relative_to(raw.root / "artifacts").as_posix(),
-                            "size": artifact.stat().st_size,
-                            "sha256": sha256_file(artifact),
-                        }
-                    )
+                if artifact.is_dir() and not artifact.is_symlink():
+                    continue
+                artifacts.append(regular_file_metadata(artifact, raw.root / "artifacts"))
             raw.write_json("artifacts.json", artifacts)
         process_status = (
             "timed_out"

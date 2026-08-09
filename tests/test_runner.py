@@ -12,7 +12,7 @@ from conftest import make_study
 from llm_status_machine.domain.models import PromptRevision, StatePolicy
 from llm_status_machine.evaluation.scorer import score_episode
 from llm_status_machine.execution.runner import RunEngine
-from llm_status_machine.recording.bundle import validate_seal
+from llm_status_machine.recording.bundle import RawBundle, validate_seal
 from llm_status_machine.study.compiler import compile_study
 from llm_status_machine.utils import read_json, sha256_file
 from llm_status_machine.workspaces.backend import WorkspaceBackend, build_manifest
@@ -211,3 +211,36 @@ def test_workspace_snapshot_commit_includes_git_ignored_files(tmp_path: Path) ->
     ).stdout.splitlines()
 
     assert "ignored.txt" in committed
+
+
+def test_workspace_git_metadata_is_outside_model_writable_tree(
+    source_workspace: Path, tmp_path: Path
+) -> None:
+    backend = WorkspaceBackend([])
+    workspace = tmp_path / "copy"
+    backend.materialize(source_workspace, workspace)
+
+    pointer = workspace / ".git"
+    assert pointer.is_file()
+    git_dir = Path(pointer.read_text(encoding="utf-8").removeprefix("gitdir: ").strip())
+    assert git_dir.parent == workspace.parent
+    assert workspace not in git_dir.parents
+
+    pointer.write_text("gitdir: /tmp/untrusted\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="Git metadata"):
+        backend.capture_final(workspace)
+
+
+@pytest.mark.parametrize("link_kind", ["symlink", "hardlink"])
+def test_raw_bundle_rejects_linked_artifacts(tmp_path: Path, link_kind: str) -> None:
+    outside = tmp_path / "outside.txt"
+    outside.write_text("non-sensitive canary", encoding="utf-8")
+    raw = RawBundle(tmp_path / "raw")
+    linked = raw.root / "artifacts" / "linked.txt"
+    if link_kind == "symlink":
+        linked.symlink_to(outside)
+    else:
+        os.link(outside, linked)
+
+    with pytest.raises(ValueError, match="regular single-link"):
+        raw.seal(run_id="run", episode_id="episode", attempt_id="attempt")

@@ -9,6 +9,31 @@ from typing import Any
 
 from llm_status_machine.utils import canonical_json, sha256_bytes, sha256_file
 
+_GIT_PATH = "/usr/bin/git"
+
+
+def _git_dir(workspace: Path) -> Path:
+    return workspace.parent / f".{workspace.name}.lsm-git"
+
+
+def _trusted_git_dir(workspace: Path) -> Path:
+    pointer = workspace / ".git"
+    info = pointer.lstat()
+    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > 4096:
+        raise ValueError("workspace Git metadata pointer is not a regular single-link file")
+    prefix = "gitdir: "
+    value = pointer.read_text(encoding="utf-8", errors="strict").strip()
+    if not value.startswith(prefix):
+        raise ValueError("workspace Git metadata pointer is invalid")
+    try:
+        declared = Path(value.removeprefix(prefix)).resolve(strict=True)
+        expected = _git_dir(workspace).resolve(strict=True)
+    except (FileNotFoundError, OSError) as error:
+        raise ValueError("workspace Git metadata pointer is invalid") from error
+    if declared != expected or not expected.is_dir():
+        raise ValueError("workspace Git metadata escaped its trusted location")
+    return expected
+
 
 def build_manifest(root: Path, excludes: set[str] | None = None) -> dict[str, Any]:
     root = root.resolve()
@@ -60,14 +85,34 @@ def build_manifest(root: Path, excludes: set[str] | None = None) -> dict[str, An
 
 def _run_git(workspace: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[bytes]:
     env = {
-        **os.environ,
+        "PATH": "/usr/bin:/bin",
+        "LANG": os.environ.get("LANG", "C.UTF-8"),
+        "LC_ALL": os.environ.get("LC_ALL", "C.UTF-8"),
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_TERMINAL_PROMPT": "0",
+        "GIT_OPTIONAL_LOCKS": "0",
         "GIT_AUTHOR_NAME": "LLM Status Machine",
         "GIT_AUTHOR_EMAIL": "lsm@localhost",
         "GIT_COMMITTER_NAME": "LLM Status Machine",
         "GIT_COMMITTER_EMAIL": "lsm@localhost",
     }
+    git_dir = _trusted_git_dir(workspace)
     return subprocess.run(
-        ["git", "-c", "core.quotepath=false", *args],
+        [
+            _GIT_PATH,
+            f"--git-dir={git_dir}",
+            f"--work-tree={workspace}",
+            "-c",
+            "core.quotepath=false",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            "commit.gpgSign=false",
+            *args,
+        ],
         cwd=workspace,
         env=env,
         check=check,
@@ -107,10 +152,38 @@ class WorkspaceBackend:
 
         shutil.copytree(source, destination, symlinks=True, ignore=ignore)
         initial = build_manifest(destination, {".git"})
-        _run_git(destination, "init", "--initial-branch=main", "--quiet")
+        git_dir = _git_dir(destination)
+        if git_dir.exists():
+            raise FileExistsError(git_dir)
+        subprocess.run(
+            [
+                _GIT_PATH,
+                "init",
+                f"--separate-git-dir={git_dir}",
+                "--initial-branch=main",
+                "--quiet",
+                str(destination),
+            ],
+            cwd=destination.parent,
+            env={
+                "PATH": "/usr/bin:/bin",
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_CONFIG_GLOBAL": "/dev/null",
+            },
+            check=True,
+            capture_output=True,
+        )
         # WorkspaceFixture.excludes is the evidence boundary; host/user Git ignore files are not.
         _run_git(destination, "add", "--all", "--force")
-        _run_git(destination, "commit", "--allow-empty", "--quiet", "-m", "initial snapshot")
+        _run_git(
+            destination,
+            "commit",
+            "--no-verify",
+            "--allow-empty",
+            "--quiet",
+            "-m",
+            "initial snapshot",
+        )
         initial["git_commit"] = _run_git(destination, "rev-parse", "HEAD").stdout.decode().strip()
         return initial
 
@@ -133,6 +206,14 @@ class WorkspaceBackend:
             changed.append(item)
             index += 1
         final = build_manifest(workspace, {".git"})
-        _run_git(workspace, "commit", "--allow-empty", "--quiet", "-m", "final snapshot")
+        _run_git(
+            workspace,
+            "commit",
+            "--no-verify",
+            "--allow-empty",
+            "--quiet",
+            "-m",
+            "final snapshot",
+        )
         final["git_commit"] = _run_git(workspace, "rev-parse", "HEAD").stdout.decode().strip()
         return final, changed, diff
