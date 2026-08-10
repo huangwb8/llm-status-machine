@@ -7,12 +7,13 @@
 ### Changed（变更）
 
 - 应用版本升级至 `2.1.0`。
+- 重构先验洗脱与证据门控示例 README：以公式猜谜类比解释三阶段 episode、五个实验臂、主要比较和评分口径，补充真实 pilot 的分阶段解读、timeout 敏感性与记忆暴露/终点地板效应限制，并将正式实验门禁收紧为先重新设计协议和运行新 pilot。
 
 ### Added（新增）
 
 - 新增 `examples/prior-washout-evidence-gating-study/` 确定性基础设施资格实验：以五臂三阶段符号回归协议覆盖 Prompt、pinned custom runtime、稳定 TrialPlan、独立调度、RawBundle、Git/seal、盲化评分、episode 数据集、推断、报告、store、export 与 recorder 故障注入，并明确隔离真实 LLM pilot 的行为结论边界。
 - 为先验洗脱实验新增真实 Codex 三阶段 orchestrator、安全 Permission Profile、确定性 open/gated/purged 状态重建、AST 函数族盲评与 shakedown/pilot/confirmatory runner；每个 episode 固定使用三个全新 ephemeral PID/thread，并只引用项目外 `CODEX_HOME`。
-- 完成 25-episode 真实 Codex exploratory pilot，保存脱敏结果摘要和正式实验预注册：正式样本量冻结为每臂 35、共 175 episode，启动前仍需显式批准 token/费用上限。
+- 完成 25-episode 真实 Codex exploratory pilot并保存脱敏结果摘要；初始功效方案记录为每臂 35、共 175 episode，但 pilot 解读已将协议重设计、新 pilot 与 token/费用上限共同列为正式实验启动门禁。
 
 ### Fixed（修复）
 
