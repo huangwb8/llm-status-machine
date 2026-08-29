@@ -1,73 +1,93 @@
-"""Run the validate-md-ref / bensz-skill-kernel regression workflow.
+"""Run the validate-md-ref / bensz-skill-kernel scenario through LSM.
 
-The workflow is intentionally kept as a small, auditable orchestrator rather
-than a StudySpec: each iteration is a fresh Codex invocation and has its own
-TaskID and workspace.  Use ``--dry-run`` in CI or when the external inputs are
-not available.
+The external integration remains a real Codex workflow, but LSM owns the
+StudySpec, frozen TrialPlan, episode scheduling, workspace snapshots and
+sealed RawBundles. Each LSM episode invokes this file in ``--episode-worker``
+mode as a custom-command harness.
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
+import platform
 import re
 import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+# The LSM custom-command environment is intentionally minimal and may not
+# carry the caller's PYTHONPATH. Make the checkout importable when this file
+# is re-entered as an episode worker.
 REPOSITORY = Path(__file__).resolve().parents[2]
+if str(REPOSITORY / "src") not in sys.path:
+    sys.path.insert(0, str(REPOSITORY / "src"))
+
+from llm_status_machine.domain.models import (
+    ExecutionProfile,
+    ModelEndpoint,
+    PromptRevision,
+    StatePolicy,
+    StudySpec,
+    WorkspaceFixture,
+)
+from llm_status_machine.execution.runner import RunEngine
+from llm_status_machine.runtimes.providers import lock_runtime
+from llm_status_machine.study.compiler import compile_study, write_plan
+
+SCRIPT = Path(__file__).resolve()
 DEFAULT_SKILLS_ROOT = Path("/Volumes/2T01/Github/skills")
 DEFAULT_ARTICLE = Path(
     "/Volumes/2T01/winE/我的坚果云/样式备份/网站/blognas.hwb0307.com/blog/new02/ai/"
     "GPT-5.6系列模型的社区反馈、基准表现和使用建议.md"
 )
 TASK_ID_PATTERN = re.compile(
-    r"TaskID\s*[=:：]\s*([0-9]{4}-[0-9]{2}-[0-9]{2}(?:-[0-9]{2}){2,3})",
-    re.IGNORECASE,
+    r"TaskID\s*[=:：]\s*([0-9]{4}-[0-9]{2}-[0-9]{2}(?:-[0-9]{2}){2,3})", re.IGNORECASE
 )
 CREDENTIAL_PATTERN = re.compile(r"(?i)(?<![a-z0-9])(?:sk|sess|key)-[a-z0-9_.*-]{8,}")
 
 
+def _resolve_codex_home(explicit: Path | None = None) -> Path | None:
+    """Resolve a Codex config root without exposing any config contents."""
+
+    candidate = explicit or (
+        Path(os.environ["CODEX_HOME"]) if os.environ.get("CODEX_HOME") else Path.home() / ".codex"
+    )
+    candidate = candidate.expanduser().resolve()
+    if not candidate.is_dir():
+        if explicit is None and not os.environ.get("CODEX_HOME"):
+            return None
+        raise ValueError(f"CODEX_HOME must reference an existing directory: {candidate}")
+    return candidate
+
+
 def _redact(value: str, codex_home: str | None = None) -> str:
-    if isinstance(value, bytes):
-        value = value.decode("utf-8", errors="replace")
+    value = value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value
     value = CREDENTIAL_PATTERN.sub("[REDACTED_CREDENTIAL]", value)
     if codex_home:
         value = value.replace(str(Path(codex_home).resolve()), "[CODEX_HOME]")
     return value
 
 
-def _allocate_task_id(output_root: Path, seen: set[str]) -> str:
-    """Return a timestamp ID that cannot reuse an existing iteration workspace."""
-
-    candidate_time = datetime.now(UTC).replace(microsecond=0)
-    while True:
-        candidate = candidate_time.strftime("%Y-%m-%d-%H-%M-%S")
-        workspace = output_root / f"task-validate-md-ref-{candidate}"
-        if candidate not in seen and not workspace.exists():
-            return candidate
-        candidate_time += timedelta(seconds=1)
-
-
-def _load_seen_task_ids(output_root: Path) -> set[str]:
-    seen: set[str] = set()
-    for manifest in output_root.glob("validate-md-ref-kernel-study*.json"):
-        try:
-            payload = json.loads(manifest.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        for iteration in payload.get("iterations", []):
-            task_id = iteration.get("task_id")
-            if isinstance(task_id, str):
-                seen.add(task_id)
-    return seen
-
-
 def _task_id_from_output(stdout: str) -> str | None:
     match = TASK_ID_PATTERN.search(stdout)
     return match.group(1) if match else None
+
+
+def _allocate_task_id(workspace: Path) -> str:
+    candidate_time = datetime.now(UTC).replace(microsecond=0)
+    existing = {
+        path.name.removeprefix("task-validate-md-ref-") for path in workspace.glob("task-validate-md-ref-*")
+    }
+    while True:
+        candidate = candidate_time.strftime("%Y-%m-%d-%H-%M-%S")
+        if candidate not in existing:
+            return candidate
+        candidate_time += timedelta(seconds=1)
 
 
 def _codex_command(
@@ -112,16 +132,13 @@ def run_codex(
     stage_dir.mkdir(parents=True, exist_ok=True)
     (stage_dir / "prompt.txt").write_text(prompt, encoding="utf-8")
     if dry_run:
-        stdout = "dry-run completed"
-        stderr = ""
-        returncode = 0
-        command: list[str] = ["<dry-run>"]
+        stdout, stderr, returncode, command = "dry-run completed", "", 0, ["<dry-run>"]
     else:
         command = _codex_command(
             executable,
             model=model,
             reasoning_effort=reasoning_effort,
-            workspace=stage_dir.parent.parent,
+            workspace=workspace,
             writable_dirs=writable_dirs,
             prompt=prompt,
         )
@@ -146,12 +163,10 @@ def run_codex(
         except subprocess.TimeoutExpired as error:
             stdout = error.stdout or ""
             stderr = error.stderr or ""
-            if isinstance(stderr, bytes):
-                stderr = stderr.decode("utf-8", errors="replace")
+            stderr = stderr.decode("utf-8", errors="replace") if isinstance(stderr, bytes) else stderr
             stderr += "\nCodex invocation timed out"
             returncode = 124
-    safe_stdout = _redact(stdout, codex_home)
-    safe_stderr = _redact(stderr, codex_home)
+    safe_stdout, safe_stderr = _redact(stdout, codex_home), _redact(stderr, codex_home)
     (stage_dir / "stdout.txt").write_text(safe_stdout, encoding="utf-8")
     (stage_dir / "stderr.txt").write_text(safe_stderr, encoding="utf-8")
     result = {
@@ -162,7 +177,9 @@ def run_codex(
         "stderr": safe_stderr,
     }
     (stage_dir / "result.json").write_text(
-        json.dumps({k: v for k, v in result.items() if k not in {"stdout", "stderr"}}, ensure_ascii=False, indent=2)
+        json.dumps(
+            {k: v for k, v in result.items() if k not in {"stdout", "stderr"}}, ensure_ascii=False, indent=2
+        )
         + "\n",
         encoding="utf-8",
     )
@@ -172,166 +189,263 @@ def run_codex(
 def build_prompts(task_id: str, workspace: Path, article: Path, skills_root: Path) -> dict[str, str]:
     plan = REPOSITORY / "docs/plans" / f"plan-validate-md-ref-{task_id}.md"
     return {
-        "update": (
-            "使用 install-bensz-skills 安装 "
-            f"{skills_root / 'skills/beta/validate-md-ref'} 。更新本机 bensz-skill-kernel "
-            "这个python包至最新版；源代码在 "
-            f"{skills_root / 'packages/bensz-skill-kernel'} 。"
-        ),
+        "update": f"使用 install-bensz-skills 安装 {skills_root / 'skills/beta/validate-md-ref'} 。更新本机 bensz-skill-kernel 这个python包至最新版；源代码在 {skills_root / 'packages/bensz-skill-kernel'} 。",
         "task_id": "生成一个标签作为本次测试的唯一ID：TaskID={yyyy-mm-dd-HH-mm-ss}。这里就是时间戳；每次测试都开一个新的；但如果用户的多轮对话在同一个会话里，不能重复地建。",
-        "validate": (
-            f"使用 {skills_root / 'skills/beta/validate-md-ref'} skill 检查 {article} "
-            f"这个博客文章的参考文献。中间的运行过程保存在 {workspace}"
-        ),
-        "evaluate": (
-            f"请调查{workspace}里状态机和验证器是否生效；如果生效，如何协作；对于整个过程你有什么看法 "
-            f"（比如，这个实例有没有暴露出 {skills_root / 'packages/bensz-skill-kernel'} 存在的源代码缺陷）？"
-            f"如果 {skills_root / 'packages/bensz-skill-kernel'} 或者 {skills_root / 'skills/beta/validate-md-ref'} "
-            f"确实有缺陷，请你写个源代码优化计划，保存在 {plan}；如果没有缺陷，请客观评价并跳过修改源代码，且不要写优化计划。"
-        ),
-        "optimize": (
-            f"根据 {plan} 优化 {skills_root / 'packages/bensz-skill-kernel'} 或 "
-            f"{skills_root / 'skills/beta/validate-md-ref'} 的源代码。"
-        ),
+        "validate": f"使用 {skills_root / 'skills/beta/validate-md-ref'} skill 检查 {article} 这个博客文章的参考文献。中间的运行过程保存在 {workspace}",
+        "evaluate": f"请调查{workspace}里状态机和验证器是否生效；如果生效，如何协作；对于整个过程你有什么看法（比如，这个实例有没有暴露出 {skills_root / 'packages/bensz-skill-kernel'} 存在的源代码缺陷）？如果 {skills_root / 'packages/bensz-skill-kernel'} 或者 {skills_root / 'skills/beta/validate-md-ref'} 确实有缺陷，请你写个源代码优化计划，保存在 {plan}；如果没有缺陷，请客观评价并跳过修改源代码，且不要写优化计划。",
+        "optimize": f"根据 {plan} 优化 {skills_root / 'packages/bensz-skill-kernel'} 或 {skills_root / 'skills/beta/validate-md-ref'} 的源代码。",
     }
 
 
-def run_iteration(
-    *,
-    iteration: int,
-    output_root: Path,
-    executable: Path,
-    model: str,
-    reasoning_effort: str,
-    article: Path,
-    skills_root: Path,
-    timeout: float,
-    dry_run: bool,
-    seen_ids: set[str],
-    codex_home: str | None,
-) -> dict[str, Any]:
-    task_id = _allocate_task_id(output_root, seen_ids)
-    seen_ids.add(task_id)
-    workspace = output_root / f"task-validate-md-ref-{task_id}"
-    workspace.mkdir(parents=True)
-    prompts = build_prompts(task_id, workspace, article, skills_root)
-    record: dict[str, Any] = {
-        "iteration": iteration,
-        "task_id": task_id,
-        "workspace": str(workspace),
-        "plan": str(REPOSITORY / "docs/plans" / f"plan-validate-md-ref-{task_id}.md"),
-        "stages": {},
-    }
-    writable = [REPOSITORY, skills_root, workspace, article.parent]
-    for stage in ("update", "task_id", "validate", "evaluate"):
-        stage_result = run_codex(
-            prompts[stage],
-            stage_dir=workspace / "stages" / stage,
-            executable=executable,
-            model=model,
-            reasoning_effort=reasoning_effort,
-            workspace=workspace,
-            writable_dirs=writable,
-            timeout=timeout,
-            dry_run=dry_run,
-            codex_home=codex_home,
-        )
-        record["stages"][stage] = {"ok": stage_result["ok"], "returncode": stage_result["returncode"]}
-        if stage == "task_id":
-            reported_task_id = _task_id_from_output(stage_result["stdout"])
-            record["reported_task_id"] = reported_task_id
-            if reported_task_id and reported_task_id != task_id:
-                reported_workspace = output_root / f"task-validate-md-ref-{reported_task_id}"
-                if reported_task_id not in seen_ids and not reported_workspace.exists():
-                    workspace.rename(reported_workspace)
-                    seen_ids.discard(task_id)
-                    seen_ids.add(reported_task_id)
-                    task_id = reported_task_id
-                    workspace = reported_workspace
-                    prompts = build_prompts(task_id, workspace, article, skills_root)
-                    record["task_id"] = task_id
-                    record["workspace"] = str(workspace)
-                    record["plan"] = str(REPOSITORY / "docs/plans" / f"plan-validate-md-ref-{task_id}.md")
-                else:
-                    record["task_id_warning"] = "Codex output TaskID conflicted with an existing iteration"
-        if not stage_result["ok"]:
-            record["status"] = "failed"
-            return record
-
-    plan_path = Path(record["plan"])
-    if plan_path.exists():
-        stage_result = run_codex(
-            prompts["optimize"],
-            stage_dir=workspace / "stages" / "optimize",
-            executable=executable,
-            model=model,
-            reasoning_effort=reasoning_effort,
-            workspace=workspace,
-            writable_dirs=writable,
-            timeout=timeout,
-            dry_run=dry_run,
-            codex_home=codex_home,
-        )
-        record["stages"]["optimize"] = {"ok": stage_result["ok"], "returncode": stage_result["returncode"]}
-        record["optimization"] = "completed" if stage_result["ok"] else "failed"
-    else:
-        record["optimization"] = "not-needed"
-    record["status"] = "completed"
-    return record
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--repeats", type=int, default=3, help="number of fresh iterations (default: 3)")
-    parser.add_argument("--output-root", type=Path, default=Path(".bensz-api"))
-    parser.add_argument("--article", type=Path, default=DEFAULT_ARTICLE)
-    parser.add_argument("--skills-root", type=Path, default=DEFAULT_SKILLS_ROOT)
-    parser.add_argument("--codex-executable", type=Path, default=Path(os.environ.get("CODEX_EXECUTABLE", "codex")))
-    parser.add_argument("--model", default="gpt-5.6-sol")
-    parser.add_argument("--reasoning-effort", default="high")
-    parser.add_argument("--timeout", type=float, default=1800)
-    parser.add_argument("--dry-run", action="store_true", help="record the complete workflow without invoking Codex")
+def episode_worker(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description="LSM custom-command worker")
+    parser.add_argument("--episode-worker", action="store_true")
+    parser.add_argument("--workspace", type=Path, required=True)
+    parser.add_argument("--artifacts-dir", type=Path, required=True)
+    parser.add_argument("--article", type=Path, required=True)
+    parser.add_argument("--skills-root", type=Path, required=True)
+    parser.add_argument("--codex-executable", type=Path, required=True)
+    parser.add_argument("--model", required=True)
+    parser.add_argument("--reasoning-effort", required=True)
+    parser.add_argument("--timeout", type=float, required=True)
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
-    if args.repeats < 1:
-        parser.error("--repeats must be at least 1")
-    output_root = args.output_root if args.output_root.is_absolute() else REPOSITORY / args.output_root
-    output_root.mkdir(parents=True, exist_ok=True)
-    codex_home = os.environ.get("CODEX_HOME")
-    if not args.dry_run and not codex_home:
-        parser.error("CODEX_HOME must reference an existing external Codex configuration")
-    seen_ids = _load_seen_task_ids(output_root)
-    manifest: dict[str, Any] = {
-        "schema_version": 1,
-        "model": args.model,
-        "reasoning_effort": args.reasoning_effort,
-        "repeats": args.repeats,
-        "dry_run": args.dry_run,
-        "iterations": [],
-    }
-    for iteration in range(1, args.repeats + 1):
-        result = run_iteration(
-            iteration=iteration,
-            output_root=output_root,
+    task_id = _allocate_task_id(args.workspace)
+    task_workspace = args.workspace / f"task-validate-md-ref-{task_id}"
+    task_workspace.mkdir(parents=True)
+    prompts = build_prompts(task_id, task_workspace, args.article, args.skills_root)
+    writable = [REPOSITORY, args.skills_root, task_workspace, args.article.parent]
+    try:
+        codex_home_path = _resolve_codex_home()
+    except ValueError as error:
+        print(str(error), file=sys.stderr)
+        return 2
+    if not args.dry_run and codex_home_path is None:
+        print("CODEX_HOME is not configured and ~/.codex does not exist", file=sys.stderr)
+        return 2
+    codex_home = str(codex_home_path) if codex_home_path else None
+    stages: dict[str, dict[str, Any]] = {}
+    for stage in ("update", "task_id", "validate", "evaluate"):
+        result = run_codex(
+            prompts[stage],
+            stage_dir=task_workspace / "stages" / stage,
             executable=args.codex_executable,
             model=args.model,
             reasoning_effort=args.reasoning_effort,
-            article=args.article,
-            skills_root=args.skills_root,
+            workspace=task_workspace,
+            writable_dirs=writable,
             timeout=args.timeout,
             dry_run=args.dry_run,
-            seen_ids=seen_ids,
             codex_home=codex_home,
         )
-        manifest["iterations"].append(result)
-        if result["status"] == "failed":
-            manifest["status"] = "failed"
-            break
-    else:
-        manifest["status"] = "completed"
-    manifest_path = output_root / "validate-md-ref-kernel-study.json"
-    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({"status": manifest["status"], "manifest": str(manifest_path), "iterations": len(manifest["iterations"])}, ensure_ascii=False))
-    return 0 if manifest["status"] == "completed" else 1
+        stages[stage] = {"ok": result["ok"], "returncode": result["returncode"]}
+        if stage == "task_id":
+            stages[stage]["reported_task_id"] = _task_id_from_output(result["stdout"])
+        print(
+            json.dumps(
+                {"type": "stage.completed", "stage": stage, "task_id": task_id, "ok": result["ok"]},
+                ensure_ascii=False,
+            ),
+            flush=True,
+        )
+        if not result["ok"]:
+            summary = {"status": "failed", "task_id": task_id, "stages": stages}
+            args.artifacts_dir.mkdir(parents=True, exist_ok=True)
+            (args.artifacts_dir / "workflow-summary.json").write_text(
+                json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+            )
+            print(json.dumps({"type": "workflow.failed", "task_id": task_id}, ensure_ascii=False), flush=True)
+            return 1
+    plan_path = REPOSITORY / "docs/plans" / f"plan-validate-md-ref-{task_id}.md"
+    optimization = "not-needed"
+    if plan_path.exists():
+        result = run_codex(
+            prompts["optimize"],
+            stage_dir=task_workspace / "stages" / "optimize",
+            executable=args.codex_executable,
+            model=args.model,
+            reasoning_effort=args.reasoning_effort,
+            workspace=task_workspace,
+            writable_dirs=writable,
+            timeout=args.timeout,
+            dry_run=args.dry_run,
+            codex_home=codex_home,
+        )
+        stages["optimize"] = {"ok": result["ok"], "returncode": result["returncode"]}
+        optimization = "completed" if result["ok"] else "failed"
+        print(
+            json.dumps(
+                {"type": "stage.completed", "stage": "optimize", "task_id": task_id, "ok": result["ok"]},
+                ensure_ascii=False,
+            ),
+            flush=True,
+        )
+        if not result["ok"]:
+            return 1
+    args.artifacts_dir.mkdir(parents=True, exist_ok=True)
+    summary = {"status": "completed", "task_id": task_id, "optimization": optimization, "stages": stages}
+    (args.artifacts_dir / "workflow-summary.json").write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    print(
+        json.dumps(
+            {"type": "workflow.completed", "task_id": task_id, "optimization": optimization},
+            ensure_ascii=False,
+        ),
+        flush=True,
+    )
+    return 0
+
+
+def build_study(
+    output_root: Path,
+    *,
+    repeats: int,
+    article: Path,
+    skills_root: Path,
+    executable: Path,
+    model: str,
+    reasoning_effort: str,
+    timeout: float,
+    dry_run: bool,
+) -> StudySpec:
+    source = output_root / "source"
+    source.mkdir(parents=True)
+    (source / "README.md").write_text("# validate-md-ref LSM integration fixture\n", encoding="utf-8")
+    runtime = lock_runtime(
+        surface="custom_command", executable=Path(sys.executable), requested_version=platform.python_version()
+    )
+    custom_argv = [
+        runtime.executable,
+        str(SCRIPT),
+        "--episode-worker",
+        "--workspace",
+        "{workspace}",
+        "--artifacts-dir",
+        "{artifacts_dir}",
+        "--article",
+        str(article.resolve()),
+        "--skills-root",
+        str(skills_root.resolve()),
+        "--codex-executable",
+        str(executable.resolve()),
+        "--model",
+        model,
+        "--reasoning-effort",
+        reasoning_effort,
+        "--timeout",
+        str(timeout),
+    ]
+    if dry_run:
+        custom_argv.append("--dry-run")
+    return StudySpec(
+        name="validate-md-ref-kernel-study",
+        repeats=repeats,
+        concurrency=1,
+        state_policy=StatePolicy.CARRY_FORWARD,
+        prompts=[
+            PromptRevision(
+                id="validate-md-ref-kernel",
+                body="运行 validate-md-ref / bensz-skill-kernel 外部集成回归工作流，并保留完整阶段证据。",
+            )
+        ],
+        workspace=WorkspaceFixture(path=str(source.resolve())),
+        runtime=runtime,
+        endpoint=ModelEndpoint(model_id=model, provider="external-codex"),
+        profile=ExecutionProfile(
+            name="external-integration",
+            permissions="workspace-write",
+            custom_argv=custom_argv,
+            prompt_transport="file",
+            decoder="jsonl",
+            timeout_seconds=timeout,
+            terminate_grace_seconds=3.0,
+            env_allowlist=["CODEX_HOME"],
+        ),
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    raw_argv = argv or sys.argv[1:]
+    if "--episode-worker" in raw_argv:
+        return episode_worker(raw_argv)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument("--output-root", type=Path, default=Path("tmp/validate-md-ref-kernel-study"))
+    parser.add_argument("--article", type=Path, default=DEFAULT_ARTICLE)
+    parser.add_argument("--skills-root", type=Path, default=DEFAULT_SKILLS_ROOT)
+    parser.add_argument(
+        "--codex-executable", type=Path, default=Path(os.environ.get("CODEX_EXECUTABLE", "codex"))
+    )
+    parser.add_argument("--model", default="gpt-5.6-sol")
+    parser.add_argument("--reasoning-effort", default="high")
+    parser.add_argument("--timeout", type=float, default=1800)
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--episode-worker", action="store_true")
+    parser.add_argument(
+        "--codex-home", type=Path, help="Codex config directory; defaults to CODEX_HOME or ~/.codex"
+    )
+    args = parser.parse_args(argv)
+    if args.repeats < 1:
+        parser.error("--repeats must be at least 1")
+    try:
+        codex_home = _resolve_codex_home(args.codex_home)
+    except ValueError as error:
+        parser.error(str(error))
+    if not args.dry_run and codex_home is None:
+        parser.error("CODEX_HOME must reference an existing external Codex configuration")
+    if codex_home:
+        os.environ["CODEX_HOME"] = str(codex_home)
+    output_root = args.output_root if args.output_root.is_absolute() else REPOSITORY / args.output_root
+    if output_root.exists():
+        parser.error(f"output root already exists: {output_root}")
+    output_root.mkdir(parents=True)
+    spec = build_study(
+        output_root,
+        repeats=args.repeats,
+        article=args.article,
+        skills_root=args.skills_root,
+        executable=args.codex_executable,
+        model=args.model,
+        reasoning_effort=args.reasoning_effort,
+        timeout=args.timeout,
+        dry_run=args.dry_run,
+    )
+    plan = compile_study(spec)
+    plan_path = output_root / "plan.jsonl"
+    write_plan(plan, plan_path)
+    data_root = output_root / "data"
+    engine = RunEngine(data_root)
+    try:
+        run = asyncio.run(engine.run(plan))
+    finally:
+        engine.close()
+    summary = {
+        "schema_version": 1,
+        "status": run["status"],
+        "run_id": run["id"],
+        "plan_id": run["plan_id"],
+        "plan": str(plan_path),
+        "data_root": str(data_root),
+        "repeats": args.repeats,
+        "concurrency": run["concurrency"],
+        "state_policy": run["state_policy"],
+        "episodes": run["episodes"],
+    }
+    summary_path = output_root / "validate-md-ref-kernel-study.json"
+    summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(
+        json.dumps(
+            {
+                "status": run["status"],
+                "run_id": run["id"],
+                "manifest": str(summary_path),
+                "episodes": len(run["episodes"]),
+            },
+            ensure_ascii=False,
+        )
+    )
+    return 0 if run["status"] == "completed" else 1
 
 
 if __name__ == "__main__":
