@@ -14,7 +14,11 @@ version=2.0.0
 
 ---
 
-在 ./examples 的某个子文件夹里再里添加一个测试； 它可以循环，默认的循环次数是3：
+请真实地运行 examples/validate-md-ref-kernel-study 这个测试。
+
+---
+
+在 ./examples 的某个子文件夹里再里添加一个标准的lsm测试。这个测试大致是一个可循环的`validate-md-ref / bensz-skill-kernel` 外部集成回归测试，具体如下：
 
 - 更新本地测试环境为最新状态。
   - 输入： 使用Codex运行Prompt`使用 install-bensz-skills 安装 /Volumes/2T01/Github/skills/skills/beta/validate-md-ref 。更新本机 bensz-skill-kernel 这个python包至最新版； 源代码在 /Volumes/2T01/Github/skills/packages/bensz-skill-kernel 。`
@@ -43,6 +47,7 @@ version=2.0.0
 - Harness: Codex
 - 推理强度： high
 - 模型： gpt-5.6-sol
+- 默认循环次数：3
 
 ---
 

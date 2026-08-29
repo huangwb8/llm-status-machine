@@ -39,6 +39,13 @@
 - 默认测试任务：Prompt 为 `请以“新中国的美人”为题写一首七言绝句。`；测试环境可使用 Simulator 或用户明确授权的真实模型，但必须验证 3 次串行 episode 都成功完成并生成记录。
 - 每次改动源代码、进行收尾准备交付前，必须运行项目自动化测试，并确认上述核心任务顺利跑通；若无法运行，必须在交付说明中明确原因、风险和补救方式。
 
+## examples 测试规范
+
+- 当人类要求在 `./examples` 中添加新的测试时，该测试必须是标准 LSM 测试，主要用于评估 LSM 本身的行为与可靠性，不得只是独立的业务脚本、模型输出示例或脱离 LSM 执行链路的单元测试。
+- 标准 LSM 测试必须通过项目公开的标准链路（至少覆盖 `StudySpec → TrialPlan → RunEngine`）运行，并显式固定 Prompt、Workspace fixture、pinned Runtime、`concurrency` 与 `state_policy` 等实验条件。
+- 测试应验证 LSM 的可观测结果与证据完整性，包括 episode/run 状态及适用的 transcript、raw stdout/stderr、artifact/metadata、workspace 快照、Git commit、changed files、diff 和 seal；不能只断言最终业务文件或自然语言输出。
+- 新示例应提供可重复运行入口，并由 `./tests` 中的自动化测试调用或核验，确保示例确实在标准 LSM 流程中执行并能发现 LSM 回归。
+
 ## 项目目录约定
 
 - `./tmp`：临时文件与测试中间产物，可不定期清理

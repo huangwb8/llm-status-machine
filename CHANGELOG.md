@@ -6,12 +6,14 @@
 
 ### Changed（变更）
 
+- 新增 `./examples` 测试规范：凡新增测试都必须通过 `StudySpec → TrialPlan → RunEngine` 等标准 LSM 链路，围绕 LSM 行为与证据完整性进行可重复评估。
 - 应用版本升级至 `2.1.0`。
 - 重构先验洗脱与证据门控示例 README：以公式猜谜类比解释三阶段 episode、五个实验臂、主要比较和评分口径，补充真实 pilot 的分阶段解读、timeout 敏感性与记忆暴露/终点地板效应限制，并将正式实验门禁收紧为先重新设计协议和运行新 pilot。
+- 重构 `examples/validate-md-ref-kernel-study/` 为标准 LSM 集成回归测试：通过 `StudySpec → TrialPlan → RunEngine` 以 `concurrency=1 + state_policy=carry_forward` 运行 3 个 episode，保留完整 RawBundle/seal，并在每个 episode 内执行真实 `validate-md-ref / bensz-skill-kernel` Codex 工作流。
+- 完善 validate-md-ref 集成测试的 Codex 配置解析：支持 `--codex-home`、`CODEX_HOME` 和本机 `~/.codex` 自动回退，并在真实运行前校验目录存在。
 
 ### Added（新增）
 
-- 新增 `examples/validate-md-ref-kernel-study/` 循环测试：默认以 3 轮独立 Codex 调用串联环境更新、TaskID、`validate-md-ref` 参考文献核查、状态机/验证器评估及条件优化，并保存脱敏阶段输出与迭代清单。
 - 新增 `examples/prior-washout-evidence-gating-study/` 确定性基础设施资格实验：以五臂三阶段符号回归协议覆盖 Prompt、pinned custom runtime、稳定 TrialPlan、独立调度、RawBundle、Git/seal、盲化评分、episode 数据集、推断、报告、store、export 与 recorder 故障注入，并明确隔离真实 LLM pilot 的行为结论边界。
 - 为先验洗脱实验新增真实 Codex 三阶段 orchestrator、安全 Permission Profile、确定性 open/gated/purged 状态重建、AST 函数族盲评与 shakedown/pilot/confirmatory runner；每个 episode 固定使用三个全新 ephemeral PID/thread，并只引用项目外 `CODEX_HOME`。
 - 完成 25-episode 真实 Codex exploratory pilot并保存脱敏结果摘要；初始功效方案记录为每臂 35、共 175 episode，但 pilot 解读已将协议重设计、新 pilot 与 token/费用上限共同列为正式实验启动门禁。
