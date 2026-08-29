@@ -14,6 +14,38 @@ version=2.0.0
 
 ---
 
+在 ./examples 的某个子文件夹里再里添加一个测试； 它可以循环，默认的循环次数是3：
+
+- 更新本地测试环境为最新状态。
+  - 输入： 使用Codex运行Prompt`使用 install-bensz-skills 安装 /Volumes/2T01/Github/skills/skills/beta/validate-md-ref 。更新本机 bensz-skill-kernel 这个python包至最新版； 源代码在 /Volumes/2T01/Github/skills/packages/bensz-skill-kernel 。`
+  - 输出：无。
+
+- 定义工作目录。 Prompt：
+  - 输入：使用Codex运行Prompt`生成一个标签作为本次测试的唯一ID： TaskID={yyyy-mm-dd-mm-ss} 。这里就是时间戳；每次测试都开一个新的； 但如果用户的多轮对话在同一个会话里，不能重复地建。`
+  - 输出：{TaskID}
+
+- 运行测试
+  - 输入：使用Codex运行Prompt`使用 /Volumes/2T01/Github/skills/skills/beta/validate-md-ref skill 检查 /Volumes/2T01/winE/我的坚果云/样式备份/网站/blognas.hwb0307.com/blog/new02/ai/GPT-5.6系列模型的社区反馈、基准表现和使用建议.md 这个博客文章的参考文献。中间的运行过程保存在 ./.bensz-api/task-validate-md-ref-{TaskID}`
+  - 输出：`./.bensz-api/task-validate-md-ref-{TaskID}`及其内容； 定义为{WORKSPACE}
+
+- 评估过程
+  - 输入：使用Codex运行Prompt`请调查{WORKSPACE}里状态机和验证器是否生效； 如果生效，如何协作；对于整个过程你有什么看法（比如，这个实例有没有暴露出 /Volumes/2T01/Github/skills/packages/bensz-skill-kernel 存在的源代码缺陷 ）？如果 /Volumes/2T01/Github/skills/packages/bensz-skill-kernel 或者 /Volumes/2T01/Github/skills/skills/beta/validate-md-ref 确实有缺陷，请你写个源代码优化计划，保存在 docs/plans/plan-{TaskID}.md；如果没有缺陷，请客观评价并跳过修改源代码，并且不写优化计划。`
+  - 输出：计划文件`docs/plans/plan-validate-md-ref-{TaskID}.md`
+
+- 再优化
+  - 如果 `docs/plans/plan-validate-md-ref-{TaskID}.md` 不存在，表明优化完成，结束流程。 
+  - 如果 `docs/plans/plan-validate-md-ref-{TaskID}.md` 不存在，表明仍需要优化，此时：
+    - 输入：使用Codex运行Prompt`根据docs/plans/plan-validate-md-ref-{TaskID}.md 优化 /Volumes/2T01/Github/skills/packages/bensz-skill-kernel或/Volumes/2T01/Github/skills/skills/beta/validate-md-ref的源代码。`
+    - 输出：bensz-skill-kernel和validate-md-ref的源代码更新。
+
+本次任务，允许您修改 /Volumes/2T01/Github/skills 里的文件； 我已经做好  /Volumes/2T01/Github/skills 里文件的备份，你可以放心修改。参数：
+
+- Harness: Codex
+- 推理强度： high
+- 模型： gpt-5.6-sol
+
+---
+
 基于 docs/plans/prior-washout-evidence-gating-study.md 在 ./examples 里设计一个实验，用于展示、检验最新项目代码的所有主要功能。这个过程中，如果确定源代码存在缺陷，可以优化。
 
 ---

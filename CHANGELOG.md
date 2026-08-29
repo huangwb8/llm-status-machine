@@ -11,6 +11,7 @@
 
 ### Added（新增）
 
+- 新增 `examples/validate-md-ref-kernel-study/` 循环测试：默认以 3 轮独立 Codex 调用串联环境更新、TaskID、`validate-md-ref` 参考文献核查、状态机/验证器评估及条件优化，并保存脱敏阶段输出与迭代清单。
 - 新增 `examples/prior-washout-evidence-gating-study/` 确定性基础设施资格实验：以五臂三阶段符号回归协议覆盖 Prompt、pinned custom runtime、稳定 TrialPlan、独立调度、RawBundle、Git/seal、盲化评分、episode 数据集、推断、报告、store、export 与 recorder 故障注入，并明确隔离真实 LLM pilot 的行为结论边界。
 - 为先验洗脱实验新增真实 Codex 三阶段 orchestrator、安全 Permission Profile、确定性 open/gated/purged 状态重建、AST 函数族盲评与 shakedown/pilot/confirmatory runner；每个 episode 固定使用三个全新 ephemeral PID/thread，并只引用项目外 `CODEX_HOME`。
 - 完成 25-episode 真实 Codex exploratory pilot并保存脱敏结果摘要；初始功效方案记录为每臂 35、共 175 episode，但 pilot 解读已将协议重设计、新 pilot 与 token/费用上限共同列为正式实验启动门禁。
