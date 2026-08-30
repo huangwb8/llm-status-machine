@@ -6,6 +6,7 @@
 
 ### Changed（变更）
 
+- 重构 README 信息架构：将首页收敛为项目简介、Simulator 快速开始、结果概览和文档入口；新增 `docs/architecture/design-principles.md` 承载设计原则与关键取舍，详细操作和实现说明分别由现有文档维护。
 - 按 `init-project` v2.3.5 最新规范校正 `AGENTS.md` 与 `CLAUDE.md`：恢复 LLM Status Machine 的项目专属工作流、目录边界和 Python 构建/核心冒烟门禁，补充 BAC 关闭状态、平台适配及 Claude 关系说明。
 - 优化 `README.md` 的特性、目录结构、AI 辅助开发与许可证入口，并将安全相关临时文件、凭据和证书规则补充到 `.gitignore`。
 

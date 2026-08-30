@@ -2,116 +2,41 @@
 
 **把一次 LLM CLI 运行变成可以复盘、比较和核验的实验。**
 
-当你对同一个任务反复运行 Codex、Claude Code 或自定义命令时，真正难回答的往往不是“它这次输出了什么”，而是：
+LLM Status Machine（`lsm`）是一个 Python 3.12+ 本地命令行实验台，面向开发者、研究者和评估工程师。它把 Prompt、模型端点、可执行 runtime 和 workspace 一起冻结，批量运行 LLM CLI，并保存足以复核每次行为的原始证据。
 
-- 这次与上次相比，究竟只改变了 Prompt，还是 runtime、模型、工作区也变了？
-- 模型修改了哪些文件；失败或超时时，那些证据还在不在？
-- 3 次连续运行是彼此独立，还是后一轮真的继承了前一轮的工作区？
-- 几周后还能不能证明，当时使用的是哪一个可执行文件和哪一份输入？
+它适合回答这类问题：
 
-LLM Status Machine（`lsm`）是一个 Python 3.12+ 本地命令行实验台。它把这些问题变成一个明确的流程：**描述实验 → 冻结执行计划 → 运行 episode → 封存原始证据 → 盲化评分 → episode 级数据集 → 设计型推断。**
+- 两次运行是否真的只改变了 Prompt？
+- agent 修改了哪些文件，失败或超时时还留下了哪些证据？
+- 连续运行是否继承了上一轮 workspace？
+- 几周后能否证明当时使用的是哪一个 runtime 和哪一份输入？
 
-它不是聊天界面，也不是云端控制台；它面向想认真观察 LLM CLI 行为的开发者、研究者和评估工程师。
+LSM 不是聊天界面、云端控制台或完整安全沙箱。它专注于有副作用的 LLM CLI 实验：不仅记录模型说了什么，也记录它在隔离 workspace 中做了什么。
 
-## 特性
+## 快速开始
 
-- 版本化 Prompt、pinned runtime 与 workspace fixture，并编译不可变 JSONL TrialPlan。
-- 以 episode 为单位保留 raw stdout/stderr、事件、文件改动、Git 快照、diff、artifact、outcome 和 seal。
-- 支持独立、carry-forward、branch 状态策略与有界并发，提供稳定 Python CLI 和 `--json` 输出。
-- 在不修改 sealed RawBundle 的前提下执行盲化评分、episode 数据集与设计型推断。
-
-## 它解决什么问题
-
-想象你正在比较两版任务提示词。直接在终端运行当然很快，但这会留下许多无法区分的变量：本机 `PATH` 可能指向了更新后的 CLI，工作区可能残留上次修改，控制台滚动输出也不等于可核验记录。
-
-`lsm` 将一次完整调用定义为一个 **episode**。一个 episode 不是只有最终回答，而是一套能回看的事实：实际 Prompt、固定 runtime、stdout/stderr 原始字节、标准化事件、工作区的前后快照、Git diff、artifact、四类完成状态，以及最终的 seal（校验封条）。
-
-因此，你既可以用它验证“同一条件下行为是否稳定”，也可以有意识地改变一个条件，观察行为如何改变。
-
-## 与相邻工具有什么不同
-
-它不试图取代所有评测或观测工具，而是补足 LLM CLI 实验中最容易丢失的“执行证据层”。
-
-| 常见做法或相邻工具 | 通常擅长的事 | LLM Status Machine 特别关注的事 |
-| --- | --- | --- |
-| 直接调用 Codex / Claude Code | 快速完成一次任务 | 固定实际 CLI 身份、保存每次运行的原始流和工作区证据 |
-| Prompt playground / 线上日志 | 对话调试与集中展示 | 本机 workspace 上的可重复 episode，记录文件改动与 Git diff |
-| 指标导向的评测框架 | 批量算分、排行榜、测试集指标 | 先封存不可变 RawBundle，再允许反复更换 scorer，而不改写证据 |
-| 通用流程编排器 | 调度任务 | 明确表达“并发上限”和“状态继承”这两个不同的问题 |
-
-这意味着它尤其适合有副作用的 CLI agent：不仅关心模型说了什么，也关心它在隔离工作区里做了什么。它不提供 Web UI、HTTP API 或云端控制面，也不把 native CLI 或 `uv` 误称为安全沙箱。
-
-## 设计上的关键取舍
-
-### 先冻结，再运行
-
-你写的是 `StudySpec`（YAML 实验说明），但 runner 执行的是编译出的 JSONL `TrialPlan`。编译时会：
-
-- 渲染 Prompt，计算其摘要；
-- 扫描 source workspace，固定 baseline manifest；
-- 展开因素、重复和实验设计，并以 seed 稳定排序；
-- 写入绝对 runtime 路径、版本信息和 SHA-256。
-
-执行时不会重新读取 `latest`、依赖宿主 `PATH` 或临时扩展实验矩阵；它会再次校验 runtime digest 与 workspace baseline。这样“计划的是哪次实验”和“实际跑的是哪次实验”可以对上。
-
-确认性 Study 还会冻结主要 outcome、Prompt contrasts、失败/缺失策略、显著性水平、bootstrap/permutation 次数和分析 seed。编译器先构造 comparison set，再用版本化的平衡轮换算法决定 set 与 arm 顺序；每个 Trial 都显式保存 arm、pair/block、sequence position、dispatch batch 和随机化 draw。
-
-### 把并发和状态拆开
-
-很多工具把“串行”同时当作调度策略和数据依赖，容易造成歧义。`lsm` 用两个独立字段表达：
-
-| `state_policy` | 工作区关系 | 与 `concurrency` 的关系 |
-| --- | --- | --- |
-| `independent`（默认） | 每个 episode 都从同一 frozen baseline 复制 | 可使用有界并发 |
-| `carry_forward` | 下一轮只继承上一轮已完成且已 seal 的 workspace | 必须为 `1` |
-| `branch` | 每个分支仍从共同 baseline 开始，保留分支语义 | 可使用有界并发 |
-
-因此，“并发 8 个独立样本”和“连续 3 轮让 agent 接着改同一个项目”是两个清楚、可验证的实验，不是同一个模糊的 `serial` 开关。
-
-### 原始证据优先于漂亮的解析结果
-
-stdout/stderr 会先逐字节写入 raw 文件，再增量解析成 transcript。未知厂商事件、无效 UTF-8、半行 JSON 或解析失败都不会被悄悄丢掉：解析层会标记问题，原始字节仍保留。由于两个 OS pipe 没有可靠的全局顺序，记录也不会假装恢复一个不存在的“真实混合输出顺序”。
-
-每个 attempt 都会得到 process、protocol、capture、workspace 四类 outcome。只有它们都满足约束，episode 才会是 `completed`。无论成功、失败还是超时，runner 都会尽力捕获最终工作区并 seal 已有证据。
-
-### 保护被测工作区，也保护评分独立性
-
-source workspace 从不直接执行；每个 episode 在独立副本中初始化 Git snapshot。评分结果写入 `evaluations/`，不修改 sealed RawBundle。这样你可以升级评分规则、重跑评估，仍保留当时原始运行的证据。
-
-## 快速开始：先跑一个无需密钥的实验
-
-前置条件：Python 3.12+、[uv](https://docs.astral.sh/uv/) 和 Git。以下命令使用内置 Simulator；它会在本地模拟一个会产生事件、artifact 和文件修改的 agent，因此不需要模型密钥。
-
-如果你是第一次安装、需要在任意目录创建实验，或希望让 AI 自动编写标准 LSM 测试，请先阅读[《LSM 操作者手册》](docs/operator-guide.md)。
-
-项目会将 pytest、Hypothesis、Ruff、coverage 和 uv 的本地状态统一放在 `.bensz-api/` 下。推荐使用下面的 `make` 入口；如果直接运行 `uv`，请先在项目根目录设置：
+下面使用内置 Simulator，不需要模型密钥。前置条件是 Python 3.12+、[uv](https://docs.astral.sh/uv/) 和 Git。
 
 ```bash
-export UV_PROJECT_ENVIRONMENT=.bensz-api/.venv
-export HYPOTHESIS_STORAGE_DIRECTORY=.bensz-api/.hypothesis
-```
-
-```bash
+# 在项目根目录安装依赖
 make sync
 
-# 初始化一个独立实验目录；会生成 .lsm/ 和 study.example.yml。
+# 创建一个独立实验目录，并生成 StudySpec 示例
 uv run lsm init tmp/quickstart
 
-# 先确认 StudySpec 有效，再将它冻结为可执行计划。
+# 校验并冻结执行计划
 uv run lsm study validate tmp/quickstart/study.example.yml --json
 uv run lsm study compile \
   tmp/quickstart/study.example.yml \
   tmp/quickstart/.lsm/plans/first-plan.jsonl --json
 
-# 执行冻结计划；输出中的 id 是本次 run ID，episodes 是 episode ID 列表。
+# 执行冻结计划
 uv run lsm run start \
   tmp/quickstart/.lsm/plans/first-plan.jsonl \
   --data-root tmp/quickstart/.lsm --json
 ```
 
-初始化生成的样例会以 `concurrency: 1` 和 `state_policy: carry_forward` 运行 3 次，默认 Prompt 为“请以‘新中国的美人’为题写一首七言绝句。”。因此，第二、三次都会基于前一个已完成 episode 的 workspace，而不是重新使用原始目录。
-
-运行完成后，用上一步 JSON 中的实际 ID 查看和核验结果：
+初始化的样例会以 `concurrency: 1` 和 `state_policy: carry_forward` 连续运行 3 个 episode。命令输出中的 JSON 会给出实际的 `run_id` 和 `episode_id`，用它们查询结果：
 
 ```bash
 uv run lsm run status <run-id> --data-root tmp/quickstart/.lsm --json
@@ -120,117 +45,59 @@ uv run lsm episode events <episode-id> --data-root tmp/quickstart/.lsm
 uv run lsm episode diff <episode-id> --data-root tmp/quickstart/.lsm
 ```
 
-`episode validate` 会验证 seal；通过后才说明 RawBundle 中被封存的文件仍与记录的摘要一致。`events` 展示解析后的 transcript；需要看严格的进程输出时，使用 `episode stdout`，而不是把 transcript 当成原始 stdout 的替代品。
-
-也可以一条命令运行项目的核心验收：
+`episode validate` 通过表示 RawBundle 的 seal 与文件摘要一致。只想验证安装是否正常，也可以直接运行核心冒烟：
 
 ```bash
 uv run lsm smoke --root tmp/core-smoke-manual --json
 ```
 
-它会用 Simulator 完成 3 个连续、carry-forward 的 episode，并写入完整记录。`--root` 必须是一个尚不存在的目录。
+`--root` 必须指向一个尚不存在的目录。成功标准是 run 为 `completed`，并且 3 个连续 episode 都完成并封存证据。
 
-## 文档导航
-
-按使用目的选择入口：
-
-| 文档 | 适合谁 | 内容 |
-| --- | --- | --- |
-| [LSM 操作者手册](docs/operator-guide.md) | AI agent、人类操作者 | 从安装、创建实验、编写标准测试到运行、取证和排错的完整流程 |
-| [工作过程说明](docs/how-it-works.md) | 想理解内部机制的开发者 | StudySpec、TrialPlan、Run、Episode、RawBundle、评分和推断如何衔接 |
-| [LSM 实例包契约](docs/architecture/instance-package.md) | 编写或维护 `examples/` 的开发者 | 标准目录、`lsm.yml`、路径边界和单 episode smoke 要求 |
-| [研究证据与溯源](docs/architecture/research-provenance.md) | 研究设计和评估人员 | 评分盲化、episode 统计单位、数据集与推断的证据约束 |
-| [`examples/`](examples/) | 需要参考实现的人 | 可复现实例、fixture、harness、oracle、smoke 和结果说明 |
-| [Python CLI ADR](docs/adr/0001-python-cli-core.md) | 项目维护者 | Python CLI、存储、runtime 固定和安全边界的架构决策 |
-
-如果是第一次接触项目，建议按“操作者手册 → 实例包契约 → 具体示例”的顺序阅读；只想快速确认安装是否可用时，直接运行上面的 `lsm smoke` 即可。
-
-## 标准实例包
-
-`examples/` 中的每个 LSM 实例都遵循同一份源码包契约：根目录包含 `lsm.yml`、`README.md`，以及固定职责的 `prompts/`、`fixture/`、`harness/`、`oracle_tests/`、`scripts/` 和 `results/`。每个实例还必须提供恰好运行 1 个 episode 的 `scripts/smoke.py`。
+如果直接使用 `uv` 而不是项目的 Makefile 入口，请在项目根目录设置工具状态目录：
 
 ```bash
-# 创建新的标准实例骨架
-uv run lsm example init examples/my-study --id my-study --kind study --json
-
-# 校验已有实例的清单、目录、入口和路径边界
-uv run lsm example validate examples/my-study --json
+export UV_PROJECT_ENVIRONMENT=.bensz-api/.venv
+export HYPOTHESIS_STORAGE_DIRECTORY=.bensz-api/.hypothesis
 ```
 
-完整字段和目录职责见 [LSM 实例包契约](docs/architecture/instance-package.md)。实例源码与 `.lsm/`、`tmp/` 下的运行数据严格分离。
+## 你会得到什么
 
-## 一次实验从配置到证据的过程
+实验按以下链路执行：
 
 ```text
-StudySpec v2 (YAML)
-       │ validate / compile
-       ▼
-冻结的 TrialPlan（JSONL：一个计划头和确定的 trial）
-       │ run start：复核 runtime 与 baseline
-       ▼
-Run ──► Episode ──► Attempt ──► sealed RawBundle
-                                      │
-                                      └──► blind evaluation（位于 bundle 外）
-                                                   │
-                                                   ▼
-                         observations.jsonl/csv ──► inference + report
+StudySpec → validate/compile → frozen TrialPlan → Run/Episode
+                                      ↓
+                              sealed RawBundle
+                                      ↓
+                         evaluation → dataset → inference
 ```
 
-![LLM Status Machine 原理图：从 StudySpec 冻结 TrialPlan，在隔离 episode 中执行并封存 RawBundle；评分和导出只能读取 sealed evidence。](docs/llm-status-machine-principle.jpg)
+每个 episode 的 RawBundle 至少包含：
 
-*原理图：实验条件先冻结并在执行前复核；工作区与原始证据被隔离封存，评分与导出不改写 RawBundle。*
+- 实际 Prompt、runtime 和 launch metadata；
+- 原始 `stdout.raw` / `stderr.raw` 与解析后的 `transcript.jsonl`；
+- workspace 初始/最终快照、Git commit、changed files 和 diff；
+- artifact、四类 outcome、metadata 和 `seal.json`。
 
-一个 `StudySpec` 将本来容易混在一起的条件分开：
+评分、数据集和推断写入 RawBundle 之外的派生目录，不改写已经封存的原始证据。
 
-- `prompts`：可版本化 Prompt revision，以及变量；
-- `workspace`：被测目录及其排除项；
-- `runtime`：实际 harness 可执行文件、版本、平台和 SHA-256；
-- `endpoint`：模型 ID、提供方、可选 base URL 与凭据引用；
-- `profile`：超时、网络、权限、允许继承的环境变量名、解码方式等；
-- `factors` / `design`：全因子、配对或 block 条件；
-- `repeats`、`concurrency`、`state_policy`：样本数、调度与工作区拓扑。
+## 常见入口
 
-最小配置来自 `lsm init` 生成的 `study.example.yml`。下面这个节选展示了最重要的可控变量；路径必须是绝对路径，因为它们会成为实验身份的一部分。
+| 目标 | 命令或文档 |
+| --- | --- |
+| 安装、创建实验、运行和排错 | [LSM 操作者手册](docs/operator-guide.md) |
+| 理解为什么这样设计 | [设计原则与取舍](docs/architecture/design-principles.md) |
+| 了解内部执行流程 | [工作过程说明](docs/how-it-works.md) |
+| 创建或维护标准实验实例 | [LSM 实例包契约](docs/architecture/instance-package.md) |
+| 理解评分、数据集和统计推断 | [研究证据与溯源](docs/architecture/research-provenance.md) |
+| 查看可复现实例 | [`examples/`](examples/) |
+| 查看核心架构决策 | [Python CLI ADR](docs/adr/0001-python-cli-core.md) |
 
-```yaml
-schema_version: 2
-name: prompt-comparison
-seed: 42
-repeats: 3
-concurrency: 2
-state_policy: independent
-design: full_factorial
-prompts:
-  - id: concise
-    body: 请简洁地修复测试失败。
-  - id: explanatory
-    body: 请修复测试失败，并说明修改原因。
-factors:
-  review_mode: [false, true]
-workspace:
-  path: /absolute/path/to/workspace
-runtime: # 由 lsm harness lock 生成并填入完整对象
-  provider: managed
-  surface: codex_exec_cli
-  requested: 0.144.0
-  version: 0.144.0
-  executable: /absolute/path/to/codex
-  sha256: <frozen-executable-digest>
-  platform: darwin-arm64
-  version_output: <recorded-version-output>
-endpoint:
-  provider: openai
-  model_id: <model-id>
-profile:
-  timeout_seconds: 300
-  env_allowlist: [OPENAI_API_KEY]
-```
+第一次接触项目时，建议按“快速开始 → 操作者手册 → 具体示例”的顺序阅读。想了解系统取舍，再阅读设计原则和工作过程说明。
 
-上述配置会生成 `2 prompts × 2 factor levels × 3 repeats = 12` 个 exploratory trial；`seed` 只决定允许随机化的稳定顺序。确认性研究还必须设为 `study_mode: confirmatory`、`independent + concurrency=1`，并声明 `evaluation.scorers`、`analysis.outcomes` 和 `analysis.contrasts`。编译门禁不会把缺少这些声明的旧实验伪装成确认性研究。
+## 接入真实 CLI
 
-## 接入真实 CLI runtime
-
-先锁定你准备使用的二进制。这里的路径请替换成机器上的实际绝对路径：
+真实 Codex、Claude Code 或其他 CLI 需要先锁定可执行文件，再把完整 runtime 对象填入 StudySpec：
 
 ```bash
 uv run lsm harness probe /absolute/path/to/codex --json
@@ -241,99 +108,18 @@ uv run lsm harness lock \
   --output .lsm/codex-0.144.0.json
 ```
 
-将生成 JSON 的完整对象填入 StudySpec 的 `runtime` 字段，再编译计划。内置 adapter 包括：
+内置 adapter 包括 `simulator`、`codex_exec_cli`、`claude_print_cli` 和 `custom_command`。自定义命令使用明确的 argv 数组，不经过 shell；凭据只通过环境变量名称 allowlist 传入，不会写入计划或日志。完整流程见[操作者手册](docs/operator-guide.md)。
 
-- `simulator`：本地验收与 recorder 测试；
-- `codex_exec_cli`：固定 Codex `exec --json` 调用；
-- `claude_print_cli`：固定 Claude Code `-p --output-format stream-json` 调用；
-- `custom_command`：声明式 argv 数组，适用于其他 CLI。
+## 标准实验实例
 
-自定义命令不接受 shell 模板；首个 argv 必须是已冻结的 runtime executable，shell、`env` 等分派器会被拒绝。模型凭据只通过 `profile.env_allowlist` 指定环境变量**名称**；计划、launch metadata 和日志不会保存其值。请仍然注意：模型输出本身可能含敏感内容，`.lsm/` 的访问权限和保留周期由你负责。
-
-## 结果在哪里，怎样阅读
-
-每次 run 都是自描述的；SQLite 只是查询索引，文件系统中的 manifest 和 bundle 才是事实来源。
-
-```text
-.lsm/
-  index.sqlite3                 # 可由文件记录重建的 WAL 索引
-  plans/
-    first-plan.jsonl
-  runs/<run-id>/
-    run.json
-    episodes/<episode-id>/
-      episode.json
-      workspace/                # 该 episode 实际执行的副本
-      attempts/attempt-1/raw-bundle/
-        prompt.md               # 实际发送的 Prompt
-        trial.json / runtime.json / launch.json
-        stdout.raw / stderr.raw  # 原始字节，未经“美化”
-        transcript.jsonl         # 解析与规范化后的事件
-        workspace.initial.json / workspace.final.json
-        changed-files.json / diff.patch
-        artifacts.json / artifacts/
-        outcomes.json
-        metadata.json
-        seal.json
-      evaluations/              # 重评分结果，不写回 RawBundle
-    blinding/map.json            # 全部评分完成后保存的解盲映射
-    evaluation-summary.json      # 覆盖率、聚合指标与评分一致性
-    research/datasets/<id>/
-      observations.jsonl / observations.csv
-      dataset-manifest.json
-    research/analyses/<id>/
-      results.json / report.md / analysis-manifest.json
-```
-
-常用的后续操作：
+需要提交到仓库、持续维护或供 AI 自动验证的实验，使用标准实例包：
 
 ```bash
-# 在不触碰原始 bundle 的情况下评分。
-uv run lsm evaluate episode <episode-id> --data-root .lsm --json
-
-# 执行冻结计划内全部 scorer，并构建/分析一行一个 episode 的研究数据。
-uv run lsm evaluate run <run-id> --data-root .lsm --json
-uv run lsm research dataset <run-id> --data-root .lsm --json
-uv run lsm research infer <run-id> --data-root .lsm --json
-uv run lsm research report <analysis-id> --data-root .lsm --json
-
-# 即使删除了索引，也可从 run/episode manifest 重建或校验。
-uv run lsm store reindex --data-root .lsm --json
-uv run lsm store verify --data-root .lsm --json
-
-# 导出某次 run；format 可为 archive、jsonl 或 csv。
-uv run lsm export run <run-id> result.tar.gz --data-root .lsm --format archive
+uv run lsm example init examples/my-study --id my-study --kind study --json
+uv run lsm example validate examples/my-study --json
 ```
 
-外部 command scorer 使用绝对 argv 且不经过 shell；可执行文件、rubric 和 support files 会在编译时固定摘要。若 `argv[0]` 是 shebang 脚本，编译器会把实际解释器冻结为 executable，并自动把脚本作为 support file 放入只读 staging；依赖特定 Python 环境的 scorer 仍应显式使用该环境的绝对 Python launcher 作为 `argv[0]`。scorer 只得到 treatment-free blind manifest 与 sealed final commit 的只读快照。若任务必须让 scorer 看到实际 Prompt，需显式设置 `include_prompt: true`，结果会保留潜在解盲 warning。
-
-推断只读取 dataset manifest 和 TrialPlan 中冻结的 AnalysisSpec。`full_factorial` 使用分层标签置换，`matched_pair` 使用 pair 内 sign-flip，`block` 使用 block 内有效随机化单位；结果先报告 effect 与 bootstrap CI，再报告原始及 Holm 校正 p 值。失败与超时不会从 observations 消失，是否赋 worst-case 值只由预注册 policy 决定。
-
-统计依赖保持可选；运行与记录无需 NumPy/SciPy。需要推断或功效计算时安装：
-
-```bash
-uv sync --frozen --extra analysis
-uv run lsm study power study.yml --metric-type continuous --effect 5 --standard-deviation 10 --json
-uv run lsm research smoke --root tmp/research-smoke-manual --json
-```
-
-如果进程意外中断，`lsm run reconcile` 会把仍为 `running` 的 run 标记为 `orphaned`，不会猜测它已成功完成。
-
-## 安全和边界
-
-- `.lsm/` 的 RawBundle 可能包含 Prompt、模型输出和工作区内容；把它当作本地实验数据管理。
-- LSM 隔离 source workspace 与 episode 副本，但 native runtime、`uv` 和 CLI 自带 sandbox 都不等于完整安全隔离。需要强隔离时，请自行控制用户、挂载、网络、权限和资源。
-- 对于超时，POSIX 会先终止独立进程组，宽限后再强杀；即使失败也会尝试封存已有证据。
-
-## 目录结构
-
-- `src/llm_status_machine/`：当前 Python CLI 与领域实现；
-- `tests/`：自动化、集成与 CLI black-box 测试；
-- `examples/`：遵循统一实例包契约的独立、可复现实验项目及其配套材料，不属于产品源码；
-- `docs/architecture/`：保存当前架构方向与设计约定；
-- `docs/operator-guide.md`：面向 AI 与人类的安装、实验、测试、运行和证据核验手册；
-- `docs/plans/`：仍可执行的计划；
-- `.lsm/`、`tmp/`、`var/`：被忽略的实验数据与可再生成临时产物。
+实例源码与 `.lsm/`、`tmp/` 下的运行数据分离。目录职责、`lsm.yml` 和单 episode smoke 要求见[实例包契约](docs/architecture/instance-package.md)。
 
 ## 开发与验证
 
@@ -344,12 +130,13 @@ make smoke
 make build
 ```
 
-应用版本只在 [`src/llm_status_machine/version.py`](src/llm_status_machine/version.py) 维护；RawBundle schema version 与应用版本彼此独立。实现细节可继续阅读 [工作过程说明](docs/how-it-works.md) 和 [Python CLI 核心 ADR](docs/adr/0001-python-cli-core.md)。
+应用版本只在 [`src/llm_status_machine/version.py`](src/llm_status_machine/version.py) 维护；RawBundle schema version 与应用版本彼此独立。
 
-## AI 辅助开发
+## 数据与安全边界
 
-项目根目录的 [`AGENTS.md`](AGENTS.md) 是 Codex 等工具的通用指令源，
-[`CLAUDE.md`](CLAUDE.md) 通过 `@./AGENTS.md` 提供 Claude Code 适配。AI 参与的代码或文档变更必须遵循项目工作流、运行相应测试，并在 `CHANGELOG.md` 的 `[Unreleased]` 记录影响范围。
+- `.lsm/` 可能包含 Prompt、模型输出和 workspace 内容，应按本地实验数据管理，不要默认提交或上传。
+- LSM 会隔离 source workspace 与 episode 副本，但 native runtime、`uv` 和 CLI 自带 sandbox 不等于完整安全隔离。
+- 自定义 runtime 不经过 shell，计划会固定绝对 executable、版本和 SHA-256；高风险实验仍需操作者自行控制用户、网络、权限和资源边界。
 
 ## 许可证
 
