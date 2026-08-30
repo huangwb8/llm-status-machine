@@ -121,6 +121,20 @@ uv run lsm smoke --root tmp/core-smoke-manual --json
 
 它会用 Simulator 完成 3 个连续、carry-forward 的 episode，并写入完整记录。`--root` 必须是一个尚不存在的目录。
 
+## 标准实例包
+
+`examples/` 中的每个 LSM 实例都遵循同一份源码包契约：根目录包含 `lsm.yml`、`README.md`，以及固定职责的 `prompts/`、`fixture/`、`harness/`、`oracle_tests/`、`scripts/` 和 `results/`。每个实例还必须提供恰好运行 1 个 episode 的 `scripts/smoke.py`。
+
+```bash
+# 创建新的标准实例骨架
+uv run lsm example init examples/my-study --id my-study --kind study --json
+
+# 校验已有实例的清单、目录、入口和路径边界
+uv run lsm example validate examples/my-study --json
+```
+
+完整字段和目录职责见 [LSM 实例包契约](docs/architecture/instance-package.md)。实例源码与 `.lsm/`、`tmp/` 下的运行数据严格分离。
+
 ## 一次实验从配置到证据的过程
 
 ```text
@@ -291,7 +305,7 @@ uv run lsm research smoke --root tmp/research-smoke-manual --json
 
 - `src/llm_status_machine/`：当前 Python CLI 与领域实现；
 - `tests/`：自动化、集成与 CLI black-box 测试；
-- `examples/`：独立、可复现的实验项目及其配套材料，不属于产品源码；
+- `examples/`：遵循统一实例包契约的独立、可复现实验项目及其配套材料，不属于产品源码；
 - `docs/architecture/`、`docs/history/`：分别保存架构方向与历史开发诉求；
 - `docs/plans/`：仍可执行的计划；
 - `.lsm/`、`tmp/`、`var/`：被忽略的实验数据与可再生成临时产物。

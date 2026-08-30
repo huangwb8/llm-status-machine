@@ -38,6 +38,7 @@ from llm_status_machine.evaluation.runner import evaluate_run
 from llm_status_machine.evaluation.scorer import score_episode
 from llm_status_machine.execution.runner import RunEngine
 from llm_status_machine.harnesses.base import list_adapters
+from llm_status_machine.instances import InstanceContractError, scaffold_instance, validate_instance
 from llm_status_machine.prompts.core import freeze_prompt, lint_prompt, render_prompt
 from llm_status_machine.recording.bundle import resolve_bundle_path, validate_seal
 from llm_status_machine.runtimes.providers import (
@@ -54,6 +55,7 @@ from llm_status_machine.version import (
     EVALUATION_SCHEMA_VERSION,
     EVENT_SCHEMA_VERSION,
     INDEX_SCHEMA_VERSION,
+    INSTANCE_SCHEMA_VERSION,
     RAW_BUNDLE_SCHEMA_VERSION,
     RUN_SCHEMA_VERSION,
     STUDY_SCHEMA_VERSION,
@@ -73,6 +75,7 @@ evaluate_app = typer.Typer(no_args_is_help=True)
 research_app = typer.Typer(no_args_is_help=True)
 export_app = typer.Typer(no_args_is_help=True)
 store_app = typer.Typer(no_args_is_help=True)
+example_app = typer.Typer(no_args_is_help=True)
 for name, subapp in (
     ("harness", harness_app),
     ("prompt", prompt_app),
@@ -84,6 +87,7 @@ for name, subapp in (
     ("research", research_app),
     ("export", export_app),
     ("store", store_app),
+    ("example", example_app),
 ):
     app.add_typer(subapp, name=name)
 
@@ -176,6 +180,63 @@ def initialize(
     _emit({"project": str(project), "data_root": str(data_root), "example_study": str(study_path)}, as_json)
 
 
+@example_app.command("init")
+def example_init(
+    root: Path,
+    instance_id: Annotated[str | None, typer.Option("--id")] = None,
+    kind: Annotated[str, typer.Option("--kind")] = "study",
+    as_json: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    if kind not in {"study", "integration", "benchmark"}:
+        raise typer.BadParameter("kind must be study, integration, or benchmark")
+    try:
+        report = scaffold_instance(
+            root,
+            instance_id=instance_id or root.name,
+            kind=kind,  # type: ignore[arg-type]
+        )
+    except (FileExistsError, OSError, InstanceContractError, ValueError) as error:
+        _command_error(error, as_json)
+    _emit(
+        {
+            "status": "completed",
+            "valid": report.valid,
+            "root": str(report.root),
+            "manifest": str(report.paths["manifest"]),
+            "warnings": report.warnings,
+            "errors": report.errors,
+        },
+        as_json,
+    )
+
+
+@example_app.command("validate")
+def example_validate(
+    root: Path,
+    as_json: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    try:
+        report = validate_instance(root)
+    except (OSError, InstanceContractError, ValueError) as error:
+        _command_error(error, as_json)
+    _emit(
+        {
+            "status": "completed",
+            "valid": report.valid,
+            "id": report.manifest.id,
+            "kind": report.manifest.kind,
+            "root": str(report.root),
+            "study_mode": report.manifest.study.mode,
+            "components": report.manifest.components,
+            "smoke": str(report.paths["smoke"]),
+            "expected_episodes": report.manifest.smoke.expected_episodes,
+            "warnings": report.warnings,
+            "errors": report.errors,
+        },
+        as_json,
+    )
+
+
 @app.command("doctor")
 def doctor(
     data_root: Annotated[Path, typer.Option("--data-root")] = Path(".lsm"),
@@ -197,6 +258,7 @@ def doctor(
                 "evaluation": EVALUATION_SCHEMA_VERSION,
                 "analysis": ANALYSIS_SCHEMA_VERSION,
                 "index": INDEX_SCHEMA_VERSION,
+                "instance": INSTANCE_SCHEMA_VERSION,
             },
         },
     }
