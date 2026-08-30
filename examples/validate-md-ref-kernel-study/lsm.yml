@@ -1,0 +1,18 @@
+schema_version: 1
+id: validate-md-ref-kernel-study
+kind: integration
+study:
+  mode: embedded
+  entrypoint: scripts/run.py
+components:
+  prompts: prompts
+  fixture: fixture
+  harness: harness
+  oracle_tests: oracle_tests
+  scripts: scripts
+  results: results
+smoke:
+  script: scripts/smoke.py
+  expected_episodes: 1
+external_dependencies:
+  - The real run requires a skills workspace and a configured Codex installation.

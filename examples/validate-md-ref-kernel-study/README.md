@@ -18,17 +18,25 @@ LSM 负责冻结计划、串行调度和 `carry_forward` workspace；每个 epis
 
 ## 运行
 
+实例的标准入口位于 `scripts/run.py`。先验证实例包并执行一个 dry-run episode：
+
+```bash
+uv run lsm example validate examples/validate-md-ref-kernel-study --json
+uv run python examples/validate-md-ref-kernel-study/scripts/smoke.py \
+  --root tmp/validate-md-ref-kernel-one-episode
+```
+
 真实运行会按以下顺序解析 Codex 配置目录：`--codex-home`、环境变量 `CODEX_HOME`、本机 `~/.codex`。因此本地已经登录的 Codex 通常无需额外导出变量；只有这三个位置都不可用时才会拒绝启动。
 
 ```bash
 export CODEX_HOME=/path/to/external/codex-home
-uv run python examples/validate-md-ref-kernel-study/run_test.py
+uv run python examples/validate-md-ref-kernel-study/scripts/run.py
 ```
 
 使用项目内置的无副作用冒烟模式：
 
 ```bash
-uv run python examples/validate-md-ref-kernel-study/run_test.py \
+uv run python examples/validate-md-ref-kernel-study/scripts/run.py \
   --dry-run --repeats 3 --output-root tmp/validate-md-ref-kernel-study
 ```
 

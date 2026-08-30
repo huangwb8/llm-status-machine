@@ -226,6 +226,16 @@ uv run python examples/prior-washout-evidence-gating-study/scripts/run_real_stud
 
 ## 一键资格测试
 
+先用标准实例门禁和单 episode smoke 检查目录与最小执行链：
+
+```bash
+uv run lsm example validate examples/prior-washout-evidence-gating-study --json
+uv run python examples/prior-washout-evidence-gating-study/scripts/smoke.py \
+  --root tmp/prior-washout-one-episode
+```
+
+smoke 只运行一个确定性 qualification episode；下面的一键资格测试仍覆盖完整的 25 episode 研究与评分链路。
+
 资格实验无需模型密钥：
 
 ```bash
@@ -300,10 +310,11 @@ uv run lsm run start tmp/prior-washout-plan.jsonl \
 ## 目录
 
 ```text
+lsm.yml                  实例类型、组件、Study 来源与单 episode smoke 契约
 fixture/                 可复制 workspace、可见数据、公开 evaluator、资格 runner
 harness/                 真实 nested runtime 的本地锁模板（不含凭据）
 oracle_tests/            模型不可见的 OOD/结构真值与 command scorer
 prompts/                 单模板与五个物化 Prompt
-scripts/                 fixture、StudySpec、计划门禁、recorder 与一键资格脚本
+scripts/                 fixture、StudySpec、计划门禁、smoke、recorder 与一键资格脚本
 results/                 只保存可提交的脱敏 episode 级结果摘要
 ```

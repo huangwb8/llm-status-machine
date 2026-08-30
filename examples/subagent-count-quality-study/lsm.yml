@@ -1,0 +1,21 @@
+schema_version: 1
+id: subagent-count-quality-study
+kind: benchmark
+study:
+  mode: generated
+  path: study.yml
+  generator: scripts/prepare_study.py
+components:
+  prompts: prompts
+  fixture: fixture
+  harness: harness
+  oracle_tests: oracle_tests
+  scripts: scripts
+  results: results
+  analysis: analysis
+  assets: assets
+smoke:
+  script: scripts/smoke.py
+  expected_episodes: 1
+external_dependencies:
+  - CODEX_HOME is required only for the real confirmatory study.

@@ -115,10 +115,13 @@ LLM agent 的输出不是一个静态答案：它会读取文件、调用工具�
 ## 目录
 
 ```text
+lsm.yml                  实例类型、组件、Study 来源与单 episode smoke 契约
 fixture/                 被每个 episode 独立复制的 starter 软件
+harness/                 内置 pinned Codex/Simulator harness 的使用说明
 oracle_tests/            episode 看不到的外部验收程序
 prompts/                 单一模板与 3/6/9 三个物化 Prompt
 scripts/prepare_study.py 生成并校验本地 StudySpec
+scripts/smoke.py         运行一个无需凭据的 sealed Simulator episode
 scripts/score_run.py     兼容历史 pilot 的专用评分与 CSV 导出
 oracle_tests/lsm_scorer.py 通用 command scorer 协议适配器
 analysis/                R + Rmd 可复现分析
@@ -127,6 +130,16 @@ results/                 可提交的脱敏 tidy 结果与摘要
 ```
 
 ## 运行
+
+先验证标准实例包并运行一个无需 Codex 凭据的 Simulator episode：
+
+```bash
+uv run lsm example validate examples/subagent-count-quality-study --json
+uv run python examples/subagent-count-quality-study/scripts/smoke.py \
+  --root tmp/subagent-count-quality-one-episode
+```
+
+smoke 只验证本实例的 `StudySpec → TrialPlan → RunEngine → sealed RawBundle` 最小链路；下面的正式运行才调用 pinned Codex 和隐藏 oracle。
 
 以下命令从仓库根目录执行。`CODEX_HOME` 应指向已经可用的外部 Codex 配置目录；不要把其中内容复制到本示例。
 
