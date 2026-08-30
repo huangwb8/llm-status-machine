@@ -25,7 +25,7 @@
 
 ### 2. 执行流程
 
-功能开发 → 组件测试 → Python 构建 → 核心冒烟测试 → 监控反馈
+需求理解 → 功能开发 → 组件测试 → Python 构建 → 核心冒烟测试 → 文档与变更记录 → 交付
 
 ### 3. 输出规范
 
@@ -33,28 +33,16 @@
 - 文档更新应保持一致性
 - 测试覆盖应符合项目标准
 
-## 核心冒烟测试
-
-- 项目可正常运转的最低标准：给定一个 Prompt、一个 Workspace（默认使用本仓库 `./tmp` 下的子目录）和一个 pinned Runtime，能够以 `concurrency=1 + state_policy=carry_forward` 连续运行 3 次，并为每次 episode 记录 transcript、raw stdout/stderr、artifact/metadata、工作区 initial/final snapshot、Git commit、changed files、diff 与 seal，最终 run 状态为 `completed`。
-- 默认测试任务：Prompt 为 `请以“新中国的美人”为题写一首七言绝句。`；测试环境可使用 Simulator 或用户明确授权的真实模型，但必须验证 3 次串行 episode 都成功完成并生成记录。
-- 每次改动源代码、进行收尾准备交付前，必须运行项目自动化测试，并确认上述核心任务顺利跑通；若无法运行，必须在交付说明中明确原因、风险和补救方式。
-
-## examples 测试规范
-
-- 当人类要求在 `./examples` 中添加新的测试时，该测试必须是标准 LSM 测试，主要用于评估 LSM 本身的行为与可靠性，不得只是独立的业务脚本、模型输出示例或脱离 LSM 执行链路的单元测试。
-- 标准 LSM 测试必须通过项目公开的标准链路（至少覆盖 `StudySpec → TrialPlan → RunEngine`）运行，并显式固定 Prompt、Workspace fixture、pinned Runtime、`concurrency` 与 `state_policy` 等实验条件。
-- 测试应验证 LSM 的可观测结果与证据完整性，包括 episode/run 状态及适用的 transcript、raw stdout/stderr、artifact/metadata、workspace 快照、Git commit、changed files、diff 和 seal；不能只断言最终业务文件或自然语言输出。
-- 新示例应提供可重复运行入口，并由 `./tests` 中的自动化测试调用或核验，确保示例确实在标准 LSM 流程中执行并能发现 LSM 回归。
-
 ## 项目目录约定
 
 - `./tmp`：临时文件与测试中间产物，可不定期清理
 - `./tests`：质检用测试脚本及相关软件结构
-- `./docs/architecture`：当前与未来架构说明
-- `./docs/migration`：迁移指南、盘点与核验材料
-- `./docs/history`：已失效但需要保留的开发背景
+- `./docs`：解释性文档、教程等非计划类文档
+- `./docs/architecture`：当前架构说明与设计约定
+- `./docs/migration`：迁移指南、盘点与核验材料（如存在）
+- `./docs/history`：已失效但需要保留的开发背景（如存在）
 - `./docs/plans`：AI 为解决特定问题而制定的计划文档
-- `./docs/plans/archive`：仅供追溯、不再指导当前实现的历史计划
+- `./docs/plans/archive`：仅供追溯、不再指导当前实现的历史计划（如存在）
 - `./src/llm_status_machine`：Python 包源码；应用版本只在 `version.py` 维护
 - `./.lsm`：默认本地索引、计划与 RawBundle 数据根，不提交 Git
 - `./var`：本地不可再生成状态，不提交 Git
@@ -87,6 +75,21 @@
 ## 联网与搜索
 
 默认优先使用项目内文件与本地上下文；确需联网获取信息时，优先使用本地搜索工具。仅当本地工具不足以满足需求时再使用其它联网手段，并说明原因与保留关键链接。
+
+## 平台与运行时适配
+
+- Python 版本要求以 `pyproject.toml` 的 `requires-python` 为准（当前为 3.12+）；依赖与命令优先通过 `uv` 管理。
+- CLI 需同时保持 macOS、Linux 等 POSIX 环境下的路径、进程组终止和 UTF-8 行为；涉及平台差异时应提供可验证的降级路径。
+- 不把 native CLI、`uv` 或 Harness 自带 sandbox 宣称为完整安全隔离；高风险实验须由操作者另行配置权限、网络和资源边界。
+
+## 贡献记录
+
+本项目当前未启用 [bensz-auto-contribution](https://github.com/huangwb8/bensz-auto-contribution) 的 `bac` 贡献记录；如后续重新启用，贡献托管文件建议使用 `docs/contribution.bac`；本次初始化已显式关闭 BAC 自动安装与账本初始化，之后可移除关闭开关重新启用。
+
+- 贡献记录当前处于关闭状态；用户可以随时重新开启，例如运行初始化脚本时不要传入 `--disable-bac`
+- 记录应忠实反映需求来源、AI 生成内容、工具执行结果、人工确认、文件改动与验证证据
+- 不把 BAC 当作最终署名或责任裁判；它是过程记录与辅助审计材料
+- 不记录敏感密钥、完整私有提示词或无关个人隐私
 
 ## 代码优化与修改
 
@@ -123,6 +126,19 @@
 - 修改 `AGENTS.md` 后，应同步检查 `CLAUDE.md` 的核心内容是否一致
 - `CHANGELOG.md` 遵循 Keep a Changelog；优先记录到 `[Unreleased]`
 - 如项目启用版本号，以配置文件为唯一来源，并遵循 SemVer：bug fix 递增修订号，新功能递增次版本号，破坏性变更递增主版本号
+
+## 核心冒烟测试
+
+- 项目可正常运转的最低标准：给定一个 Prompt、一个 Workspace（默认使用本仓库 `./tmp` 下的子目录）和一个 pinned Runtime，能够以 `concurrency=1 + state_policy=carry_forward` 连续运行 3 次，并为每次 episode 记录 transcript、raw stdout/stderr、artifact/metadata、工作区 initial/final snapshot、Git commit、changed files、diff 与 seal，最终 run 状态为 `completed`。
+- 默认测试任务：Prompt 为 `请以“新中国的美人”为题写一首七言绝句。`；测试环境可使用 Simulator 或用户明确授权的真实模型，但必须验证 3 次串行 episode 都成功完成并生成记录。
+- 每次改动源代码、进行收尾准备交付前，必须运行项目自动化测试，并确认上述核心任务顺利跑通；若无法运行，必须在交付说明中明确原因、风险和补救方式。
+
+## examples 测试规范
+
+- 当人类要求在 `./examples` 中添加新的测试时，该测试必须是标准 LSM 测试，主要用于评估 LSM 本身的行为与可靠性，不得只是独立的业务脚本、模型输出示例或脱离 LSM 执行链路的单元测试。
+- 标准 LSM 测试必须通过项目公开的标准链路（至少覆盖 `StudySpec → TrialPlan → RunEngine`）运行，并显式固定 Prompt、Workspace fixture、pinned Runtime、`concurrency` 与 `state_policy` 等实验条件。
+- 测试应验证 LSM 的可观测结果与证据完整性，包括 episode/run 状态及适用的 transcript、raw stdout/stderr、artifact/metadata、workspace 快照、Git commit、changed files、diff 和 seal；不能只断言最终业务文件或自然语言输出。
+- 新示例应提供可重复运行入口，并由 `./tests` 中的自动化测试调用或核验，确保示例确实在标准 LSM 流程中执行并能发现 LSM 回归。
 
 ## 有机更新原则
 

@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Changed（变更）
+
+- 按 `init-project` v2.3.5 最新规范校正 `AGENTS.md` 与 `CLAUDE.md`：恢复 LLM Status Machine 的项目专属工作流、目录边界和 Python 构建/核心冒烟门禁，补充 BAC 关闭状态、平台适配及 Claude 关系说明。
+- 优化 `README.md` 的特性、目录结构、AI 辅助开发与许可证入口，并将安全相关临时文件、凭据和证书规则补充到 `.gitignore`。
+
 - 新增 `docs/operator-guide.md`，统一说明 AI/人类操作者的安装、实验目录、标准 LSM 测试、runtime 锁定、运行取证、故障处理与交付验收流程。
 - 新增版本化 LSM 实例包契约、`lsm example init/validate` CLI、路径 containment 校验和标准单 episode smoke 入口；三个 `examples/` 实例现已统一使用固定组件目录并通过自动化布局与 sealed episode 回归测试。
 - 应用版本升级至 `2.2.0`。

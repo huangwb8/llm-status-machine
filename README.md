@@ -13,6 +13,13 @@ LLM Status Machine（`lsm`）是一个 Python 3.12+ 本地命令行实验台。�
 
 它不是聊天界面，也不是云端控制台；它面向想认真观察 LLM CLI 行为的开发者、研究者和评估工程师。
 
+## 特性
+
+- 版本化 Prompt、pinned runtime 与 workspace fixture，并编译不可变 JSONL TrialPlan。
+- 以 episode 为单位保留 raw stdout/stderr、事件、文件改动、Git 快照、diff、artifact、outcome 和 seal。
+- 支持独立、carry-forward、branch 状态策略与有界并发，提供稳定 Python CLI 和 `--json` 输出。
+- 在不修改 sealed RawBundle 的前提下执行盲化评分、episode 数据集与设计型推断。
+
 ## 它解决什么问题
 
 想象你正在比较两版任务提示词。直接在终端运行当然很快，但这会留下许多无法区分的变量：本机 `PATH` 可能指向了更新后的 CLI，工作区可能残留上次修改，控制台滚动输出也不等于可核验记录。
@@ -318,7 +325,7 @@ uv run lsm research smoke --root tmp/research-smoke-manual --json
 - LSM 隔离 source workspace 与 episode 副本，但 native runtime、`uv` 和 CLI 自带 sandbox 都不等于完整安全隔离。需要强隔离时，请自行控制用户、挂载、网络、权限和资源。
 - 对于超时，POSIX 会先终止独立进程组，宽限后再强杀；即使失败也会尝试封存已有证据。
 
-## 仓库结构
+## 目录结构
 
 - `src/llm_status_machine/`：当前 Python CLI 与领域实现；
 - `tests/`：自动化、集成与 CLI black-box 测试；
@@ -338,3 +345,12 @@ make build
 ```
 
 应用版本只在 [`src/llm_status_machine/version.py`](src/llm_status_machine/version.py) 维护；RawBundle schema version 与应用版本彼此独立。实现细节可继续阅读 [工作过程说明](docs/how-it-works.md) 和 [Python CLI 核心 ADR](docs/adr/0001-python-cli-core.md)。
+
+## AI 辅助开发
+
+项目根目录的 [`AGENTS.md`](AGENTS.md) 是 Codex 等工具的通用指令源，
+[`CLAUDE.md`](CLAUDE.md) 通过 `@./AGENTS.md` 提供 Claude Code 适配。AI 参与的代码或文档变更必须遵循项目工作流、运行相应测试，并在 `CHANGELOG.md` 的 `[Unreleased]` 记录影响范围。
+
+## 许可证
+
+本项目使用 MIT License，许可证元数据维护在 [`pyproject.toml`](pyproject.toml)。
