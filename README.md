@@ -75,6 +75,8 @@ source workspace 从不直接执行；每个 episode 在独立副本中初始化
 
 前置条件：Python 3.12+、[uv](https://docs.astral.sh/uv/) 和 Git。以下命令使用内置 Simulator；它会在本地模拟一个会产生事件、artifact 和文件修改的 agent，因此不需要模型密钥。
 
+如果你是第一次安装、需要在任意目录创建实验，或希望让 AI 自动编写标准 LSM 测试，请先阅读[《LSM 操作者手册》](docs/operator-guide.md)。
+
 项目会将 pytest、Hypothesis、Ruff、coverage 和 uv 的本地状态统一放在 `.bensz-api/` 下。推荐使用下面的 `make` 入口；如果直接运行 `uv`，请先在项目根目录设置：
 
 ```bash
@@ -120,6 +122,21 @@ uv run lsm smoke --root tmp/core-smoke-manual --json
 ```
 
 它会用 Simulator 完成 3 个连续、carry-forward 的 episode，并写入完整记录。`--root` 必须是一个尚不存在的目录。
+
+## 文档导航
+
+按使用目的选择入口：
+
+| 文档 | 适合谁 | 内容 |
+| --- | --- | --- |
+| [LSM 操作者手册](docs/operator-guide.md) | AI agent、人类操作者 | 从安装、创建实验、编写标准测试到运行、取证和排错的完整流程 |
+| [工作过程说明](docs/how-it-works.md) | 想理解内部机制的开发者 | StudySpec、TrialPlan、Run、Episode、RawBundle、评分和推断如何衔接 |
+| [LSM 实例包契约](docs/architecture/instance-package.md) | 编写或维护 `examples/` 的开发者 | 标准目录、`lsm.yml`、路径边界和单 episode smoke 要求 |
+| [研究证据与溯源](docs/architecture/research-provenance.md) | 研究设计和评估人员 | 评分盲化、episode 统计单位、数据集与推断的证据约束 |
+| [`examples/`](examples/) | 需要参考实现的人 | 可复现实例、fixture、harness、oracle、smoke 和结果说明 |
+| [Python CLI ADR](docs/adr/0001-python-cli-core.md) | 项目维护者 | Python CLI、存储、runtime 固定和安全边界的架构决策 |
+
+如果是第一次接触项目，建议按“操作者手册 → 实例包契约 → 具体示例”的顺序阅读；只想快速确认安装是否可用时，直接运行上面的 `lsm smoke` 即可。
 
 ## 标准实例包
 
@@ -306,7 +323,8 @@ uv run lsm research smoke --root tmp/research-smoke-manual --json
 - `src/llm_status_machine/`：当前 Python CLI 与领域实现；
 - `tests/`：自动化、集成与 CLI black-box 测试；
 - `examples/`：遵循统一实例包契约的独立、可复现实验项目及其配套材料，不属于产品源码；
-- `docs/architecture/`、`docs/history/`：分别保存架构方向与历史开发诉求；
+- `docs/architecture/`：保存当前架构方向与设计约定；
+- `docs/operator-guide.md`：面向 AI 与人类的安装、实验、测试、运行和证据核验手册；
 - `docs/plans/`：仍可执行的计划；
 - `.lsm/`、`tmp/`、`var/`：被忽略的实验数据与可再生成临时产物。
 

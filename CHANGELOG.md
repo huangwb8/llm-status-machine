@@ -4,6 +4,7 @@
 
 ## [Unreleased]
 
+- 新增 `docs/operator-guide.md`，统一说明 AI/人类操作者的安装、实验目录、标准 LSM 测试、runtime 锁定、运行取证、故障处理与交付验收流程。
 - 新增版本化 LSM 实例包契约、`lsm example init/validate` CLI、路径 containment 校验和标准单 episode smoke 入口；三个 `examples/` 实例现已统一使用固定组件目录并通过自动化布局与 sealed episode 回归测试。
 - 应用版本升级至 `2.2.0`。
 - 将 pytest、Hypothesis、Ruff、coverage 及项目 Makefile 驱动的 uv 虚拟环境状态统一收敛到 `.bensz-api/`，避免在项目根目录生成工具缓存目录。
