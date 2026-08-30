@@ -24,6 +24,16 @@ def test_task_id_parser_accepts_codex_output() -> None:
     assert runner._task_id_from_output("no identifier") is None
 
 
+def test_task_id_allocator_uses_lsm_external_log_prefix(tmp_path: Path) -> None:
+    runner = load_runner()
+    log_root = tmp_path / ".bensz-api"
+    log_root.mkdir()
+    (log_root / "task-lsm-validate-md-ref-2099-01-02-03-04-05").mkdir()
+    task_id = runner._allocate_task_id(log_root)
+    assert task_id != "2099-01-02-03-04-05"
+    assert runner.TASK_WORKSPACE_PREFIX == "task-lsm-validate-md-ref-"
+
+
 def test_codex_command_pins_model_reasoning_and_workspace(tmp_path: Path) -> None:
     runner = load_runner()
     command = runner._codex_command(
@@ -67,6 +77,31 @@ def test_codex_home_rejects_missing_explicit_path(tmp_path: Path) -> None:
         raise AssertionError("missing CODEX_HOME must be rejected")
 
 
+def test_default_timeout_is_twelve_hours() -> None:
+    runner = load_runner()
+    assert runner.DEFAULT_TIMEOUT_SECONDS == 12 * 60 * 60
+
+
+def test_completion_report_rejects_missing_episode_evidence(tmp_path: Path) -> None:
+    runner = load_runner()
+    data_root = tmp_path / "data"
+    episode_root = data_root / "runs" / "run-test" / "episodes" / "episode-1"
+    episode_root.mkdir(parents=True)
+    (episode_root / "episode.json").write_text(
+        json.dumps({"id": "episode-1", "status": "completed", "bundle": str(episode_root / "bundle")}),
+        encoding="utf-8",
+    )
+    report = runner._completion_report(
+        {"id": "run-test", "status": "completed", "episodes": ["episode-1"]},
+        data_root,
+        expected_episodes=1,
+    )
+    assert report["terminal"] is True
+    assert report["success"] is False
+    assert report["episodes_completed"] == 0
+    assert report["errors"]
+
+
 def test_codex_executable_resolves_commands_from_path(monkeypatch, tmp_path: Path) -> None:
     runner = load_runner()
     fake = tmp_path / "codex"
@@ -89,13 +124,20 @@ def test_optimization_plan_targets_external_skills_project(tmp_path: Path) -> No
 def test_dry_run_runs_three_lsm_episodes_with_sealed_evidence(tmp_path: Path, capsys) -> None:
     runner = load_runner()
     output_root = tmp_path / "output"
-    assert runner.main(["--dry-run", "--output-root", str(output_root)]) == 0
+    assert runner.main(
+        ["--dry-run", "--output-root", str(output_root), "--skills-root", str(tmp_path / "skills")]
+    ) == 0
     payload = json.loads((output_root / "validate-md-ref-kernel-study.json").read_text(encoding="utf-8"))
     assert payload["repeats"] == 3
     assert payload["status"] == "completed"
     assert payload["state_policy"] == "carry_forward"
     assert payload["concurrency"] == 1
     assert len(payload["episodes"]) == 3
+    completion = json.loads((output_root / "completion.json").read_text(encoding="utf-8"))
+    assert completion["terminal"] is True
+    assert completion["success"] is True
+    assert completion["episodes_expected"] == 3
+    assert completion["episodes_completed"] == 3
     assert json.loads(capsys.readouterr().out)["episodes"] == 3
 
     data_root = output_root / "data"
@@ -154,7 +196,24 @@ def test_lsm_custom_worker_can_use_a_real_codex_executable(tmp_path: Path, monke
     )
     payload = json.loads((output_root / "validate-md-ref-kernel-study.json").read_text(encoding="utf-8"))
     assert payload["status"] == "completed"
+    assert payload["completion_verified"] is True
     assert len(payload["episodes"]) == 1
+    workflow_summary = (
+        output_root
+        / "data"
+        / "runs"
+        / payload["run_id"]
+        / "episodes"
+        / payload["episodes"][0]
+        / "attempts/attempt-1/raw-bundle/artifacts/workflow-summary.json"
+    )
+    workflow = json.loads(workflow_summary.read_text(encoding="utf-8"))
+    assert workflow["task_id"] == "2099-01-02-03-04-05"
+    assert workflow["log_path"] == str(
+        Path(str(tmp_path / "skills"))
+        / ".bensz-api"
+        / "task-lsm-validate-md-ref-2099-01-02-03-04-05"
+    )
     episode_root = output_root / "data" / "runs" / payload["run_id"] / "episodes" / payload["episodes"][0]
     transcript = (episode_root / "attempts/attempt-1/raw-bundle/transcript.jsonl").read_text(encoding="utf-8")
     assert "workflow.completed" in transcript

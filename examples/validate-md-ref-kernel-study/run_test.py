@@ -17,7 +17,7 @@ import re
 import shutil
 import subprocess
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -37,8 +37,10 @@ from llm_status_machine.domain.models import (
     WorkspaceFixture,
 )
 from llm_status_machine.execution.runner import RunEngine
+from llm_status_machine.recording.bundle import resolve_bundle_path, validate_seal
 from llm_status_machine.runtimes.providers import lock_runtime
 from llm_status_machine.study.compiler import compile_study, write_plan
+from llm_status_machine.utils import read_json, write_json
 
 SCRIPT = Path(__file__).resolve()
 DEFAULT_SKILLS_ROOT = Path("/Volumes/2T01/Github/skills")
@@ -50,6 +52,7 @@ TASK_ID_PATTERN = re.compile(
     r"TaskID\s*[=:：]\s*([0-9]{4}-[0-9]{2}-[0-9]{2}(?:-[0-9]{2}){2,3})", re.IGNORECASE
 )
 CREDENTIAL_PATTERN = re.compile(r"(?i)(?<![a-z0-9])(?:sk|sess|key)-[a-z0-9_.*-]{8,}")
+DEFAULT_TIMEOUT_SECONDS = 12 * 60 * 60
 
 
 def _resolve_codex_home(explicit: Path | None = None) -> Path | None:
@@ -95,10 +98,16 @@ def _task_id_from_output(stdout: str) -> str | None:
     return match.group(1) if match else None
 
 
-def _allocate_task_id(workspace: Path) -> str:
-    candidate_time = datetime.now(UTC).replace(microsecond=0)
+TASK_WORKSPACE_PREFIX = "task-lsm-validate-md-ref-"
+
+
+def _allocate_task_id(log_root: Path) -> str:
+    """Allocate a session-local timestamp without reusing an external log dir."""
+
+    candidate_time = datetime.now().astimezone().replace(microsecond=0)
     existing = {
-        path.name.removeprefix("task-validate-md-ref-") for path in workspace.glob("task-validate-md-ref-*")
+        path.name.removeprefix(TASK_WORKSPACE_PREFIX)
+        for path in log_root.glob(f"{TASK_WORKSPACE_PREFIX}*")
     }
     while True:
         candidate = candidate_time.strftime("%Y-%m-%d-%H-%M-%S")
@@ -227,11 +236,20 @@ def episode_worker(argv: list[str]) -> int:
     parser.add_argument("--timeout", type=float, required=True)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
-    task_id = _allocate_task_id(args.workspace)
-    task_workspace = args.workspace / f"task-validate-md-ref-{task_id}"
+    args.workspace = args.workspace.expanduser().resolve()
+    args.artifacts_dir = args.artifacts_dir.expanduser().resolve()
+    args.article = args.article.expanduser().resolve()
+    args.skills_root = args.skills_root.expanduser().resolve()
+    # ``args.workspace`` is the isolated LSM fixture used for snapshots.  The
+    # external integration itself intentionally runs in the requested skills
+    # checkout and stores its auditable workflow logs below its .bensz-api.
+    log_root = args.skills_root.resolve() / ".bensz-api"
+    log_root.mkdir(parents=True, exist_ok=True)
+    task_id = _allocate_task_id(log_root)
+    task_workspace = log_root / f"{TASK_WORKSPACE_PREFIX}{task_id}"
     task_workspace.mkdir(parents=True)
     prompts = build_prompts(task_id, task_workspace, args.article, args.skills_root)
-    writable = [REPOSITORY, args.skills_root, task_workspace, args.article.parent]
+    writable = [args.skills_root, task_workspace]
     try:
         codex_home_path = _resolve_codex_home()
     except ValueError as error:
@@ -242,14 +260,14 @@ def episode_worker(argv: list[str]) -> int:
         return 2
     codex_home = str(codex_home_path) if codex_home_path else None
     stages: dict[str, dict[str, Any]] = {}
-    for stage in ("update", "task_id", "validate", "evaluate"):
+    for stage in ("update", "task_id"):
         result = run_codex(
             prompts[stage],
             stage_dir=task_workspace / "stages" / stage,
             executable=args.codex_executable,
             model=args.model,
             reasoning_effort=args.reasoning_effort,
-            workspace=task_workspace,
+            workspace=args.skills_root,
             writable_dirs=writable,
             timeout=args.timeout,
             dry_run=args.dry_run,
@@ -257,7 +275,24 @@ def episode_worker(argv: list[str]) -> int:
         )
         stages[stage] = {"ok": result["ok"], "returncode": result["returncode"]}
         if stage == "task_id":
-            stages[stage]["reported_task_id"] = _task_id_from_output(result["stdout"])
+            reported_task_id = _task_id_from_output(result["stdout"])
+            stages[stage]["reported_task_id"] = reported_task_id
+            if not args.dry_run and not reported_task_id:
+                result["ok"] = False
+                stages[stage]["ok"] = False
+                stages[stage]["error"] = "Codex task_id stage did not report TaskID=<timestamp>"
+            elif reported_task_id and reported_task_id != task_id:
+                target = log_root / f"{TASK_WORKSPACE_PREFIX}{reported_task_id}"
+                if target.exists():
+                    result["ok"] = False
+                    stages[stage]["ok"] = False
+                    stages[stage]["error"] = f"TaskID workspace already exists: {target}"
+                else:
+                    task_workspace.rename(target)
+                    task_id = reported_task_id
+                    task_workspace = target
+                    writable = [args.skills_root, task_workspace]
+                    prompts = build_prompts(task_id, task_workspace, args.article, args.skills_root)
         print(
             json.dumps(
                 {"type": "stage.completed", "stage": stage, "task_id": task_id, "ok": result["ok"]},
@@ -266,7 +301,41 @@ def episode_worker(argv: list[str]) -> int:
             flush=True,
         )
         if not result["ok"]:
-            summary = {"status": "failed", "task_id": task_id, "stages": stages}
+            summary = {
+                "status": "failed",
+                "task_id": task_id,
+                "log_path": str(task_workspace),
+                "stages": stages,
+            }
+            args.artifacts_dir.mkdir(parents=True, exist_ok=True)
+            (args.artifacts_dir / "workflow-summary.json").write_text(
+                json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+            )
+            print(json.dumps({"type": "workflow.failed", "task_id": task_id}, ensure_ascii=False), flush=True)
+            return 1
+    for stage in ("validate", "evaluate"):
+        result = run_codex(
+            prompts[stage],
+            stage_dir=task_workspace / "stages" / stage,
+            executable=args.codex_executable,
+            model=args.model,
+            reasoning_effort=args.reasoning_effort,
+            workspace=args.skills_root,
+            writable_dirs=writable,
+            timeout=args.timeout,
+            dry_run=args.dry_run,
+            codex_home=codex_home,
+        )
+        stages[stage] = {"ok": result["ok"], "returncode": result["returncode"]}
+        print(
+            json.dumps(
+                {"type": "stage.completed", "stage": stage, "task_id": task_id, "ok": result["ok"]},
+                ensure_ascii=False,
+            ),
+            flush=True,
+        )
+        if not result["ok"]:
+            summary = {"status": "failed", "task_id": task_id, "log_path": str(task_workspace), "stages": stages}
             args.artifacts_dir.mkdir(parents=True, exist_ok=True)
             (args.artifacts_dir / "workflow-summary.json").write_text(
                 json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
@@ -282,7 +351,7 @@ def episode_worker(argv: list[str]) -> int:
             executable=args.codex_executable,
             model=args.model,
             reasoning_effort=args.reasoning_effort,
-            workspace=task_workspace,
+            workspace=args.skills_root,
             writable_dirs=writable,
             timeout=args.timeout,
             dry_run=args.dry_run,
@@ -298,9 +367,29 @@ def episode_worker(argv: list[str]) -> int:
             flush=True,
         )
         if not result["ok"]:
+            summary = {
+                "status": "failed",
+                "task_id": task_id,
+                "log_path": str(task_workspace),
+                "plan_path": str(plan_path),
+                "optimization": optimization,
+                "stages": stages,
+            }
+            args.artifacts_dir.mkdir(parents=True, exist_ok=True)
+            (args.artifacts_dir / "workflow-summary.json").write_text(
+                json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+            )
+            print(json.dumps({"type": "workflow.failed", "task_id": task_id}, ensure_ascii=False), flush=True)
             return 1
     args.artifacts_dir.mkdir(parents=True, exist_ok=True)
-    summary = {"status": "completed", "task_id": task_id, "optimization": optimization, "stages": stages}
+    summary = {
+        "status": "completed",
+        "task_id": task_id,
+        "log_path": str(task_workspace),
+        "plan_path": str(plan_path),
+        "optimization": optimization,
+        "stages": stages,
+    }
     (args.artifacts_dir / "workflow-summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
@@ -382,6 +471,66 @@ def build_study(
     )
 
 
+def _completion_report(run: dict[str, Any], data_root: Path, expected_episodes: int) -> dict[str, Any]:
+    """Return an explicit, machine-checkable terminal/success report.
+
+    ``RunEngine.run`` is blocking, but a caller should still verify that every
+    planned episode reached ``completed`` and that its sealed evidence is
+    readable before treating the external test as finished successfully.
+    """
+
+    run_root = data_root / "runs" / str(run["id"])
+    episode_reports: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for episode_id in run.get("episodes", []):
+        episode_root = run_root / "episodes" / str(episode_id)
+        episode_path = episode_root / "episode.json"
+        if not episode_path.is_file():
+            errors.append(f"missing episode manifest: {episode_id}")
+            episode_reports.append({"id": episode_id, "status": "missing", "seal_valid": False})
+            continue
+        try:
+            episode = read_json(episode_path)
+            bundle = resolve_bundle_path(episode_root, episode)
+            seal_valid, seal_errors = validate_seal(bundle)
+        except (OSError, KeyError, TypeError, ValueError) as error:
+            seal_valid, seal_errors = False, [f"{type(error).__name__}: {error}"]
+            episode = {"id": episode_id, "status": "invalid"}
+        if not seal_valid:
+            errors.extend(f"episode {episode_id}: {error}" for error in seal_errors)
+        episode_reports.append(
+            {
+                "id": episode.get("id", episode_id),
+                "status": episode.get("status", "unknown"),
+                "seal_valid": seal_valid,
+            }
+        )
+
+    terminal = run.get("status") in {"completed", "failed", "cancelled", "timed_out"}
+    success = (
+        terminal
+        and run.get("status") == "completed"
+        and len(episode_reports) == expected_episodes
+        and all(item["status"] == "completed" and item["seal_valid"] for item in episode_reports)
+    )
+    if len(episode_reports) != expected_episodes:
+        errors.append(f"episode count: expected {expected_episodes}, observed {len(episode_reports)}")
+    return {
+        "schema_version": 1,
+        "run_id": run.get("id"),
+        "terminal": terminal,
+        "success": success,
+        "run_status": run.get("status"),
+        "episodes_expected": expected_episodes,
+        "episodes_observed": len(episode_reports),
+        "episodes_completed": sum(
+            item["status"] == "completed" and item["seal_valid"] for item in episode_reports
+        ),
+        "episodes": episode_reports,
+        "errors": errors,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     raw_argv = argv or sys.argv[1:]
     if "--episode-worker" in raw_argv:
@@ -394,7 +543,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--codex-executable", type=Path)
     parser.add_argument("--model", default="gpt-5.6-sol")
     parser.add_argument("--reasoning-effort", default="high")
-    parser.add_argument("--timeout", type=float, default=1800)
+    parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_SECONDS)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--episode-worker", action="store_true")
     parser.add_argument(
@@ -442,6 +591,9 @@ def main(argv: list[str] | None = None) -> int:
         run = asyncio.run(engine.run(plan))
     finally:
         engine.close()
+    completion_path = output_root / "completion.json"
+    completion = _completion_report(run, data_root, args.repeats)
+    write_json(completion_path, completion)
     summary = {
         "schema_version": 1,
         "status": run["status"],
@@ -449,10 +601,14 @@ def main(argv: list[str] | None = None) -> int:
         "plan_id": run["plan_id"],
         "plan": str(plan_path),
         "data_root": str(data_root),
+        "skills_root": str(args.skills_root.resolve()),
+        "article": str(args.article.resolve()),
         "repeats": args.repeats,
         "concurrency": run["concurrency"],
         "state_policy": run["state_policy"],
         "episodes": run["episodes"],
+        "completion": str(completion_path),
+        "completion_verified": completion["success"],
     }
     summary_path = output_root / "validate-md-ref-kernel-study.json"
     summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -463,11 +619,14 @@ def main(argv: list[str] | None = None) -> int:
                 "run_id": run["id"],
                 "manifest": str(summary_path),
                 "episodes": len(run["episodes"]),
+                "terminal": completion["terminal"],
+                "success": completion["success"],
+                "completion": str(completion_path),
             },
             ensure_ascii=False,
         )
     )
-    return 0 if run["status"] == "completed" else 1
+    return 0 if completion["success"] else 1
 
 
 if __name__ == "__main__":

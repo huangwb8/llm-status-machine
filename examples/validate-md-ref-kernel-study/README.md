@@ -4,17 +4,17 @@
 
 `StudySpec → TrialPlan → RunEngine → Episode → sealed RawBundle`
 
-LSM 负责冻结计划、串行调度和 `carry_forward` workspace；每个 episode 通过 `custom_command` harness 调用本文件的 worker，worker 再启动外部 Codex 阶段。每轮都会创建唯一的 `TaskID` 和 workspace：
+LSM 负责冻结计划、串行调度和 `carry_forward` workspace；每个 episode 通过 `custom_command` harness 调用本文件的 worker，worker 再在指定的外部 `{WORKSPACE}`（默认 `/Volumes/2T01/Github/skills`）启动 Codex 阶段。每轮都会创建唯一的 `TaskID`，并把日志写入 `{WORKSPACE}/.bensz-api/task-lsm-validate-md-ref-{TaskID}`：
 
 1. 更新本地 skill 与 `bensz-skill-kernel`；
-2. 生成并记录 `TaskID`；
+2. 让 Codex 生成并记录 `TaskID`（若返回的 ID 与预分配值不同，工作目录会原子改名为返回值；重复目录会使 episode 失败，避免覆盖证据）；
 3. 检查指定博客文章的参考文献；
 4. 调查状态机/验证器是否生效，并在发现缺陷时写入 `docs/plans/plan-validate-md-ref-{TaskID}.md`；
 5. 仅当 skills 项目中的计划文件存在时执行优化；不存在则标记为无需优化。
 
-优化计划写入 `skills-root/docs/plans/plan-validate-md-ref-{TaskID}.md`，不会写入本 LSM 项目的 `docs/plans/`。
+优化计划写入 `skills-root/docs/plans/plan-validate-md-ref-{TaskID}.md`，不会写入本 LSM 项目的 `docs/plans/`。嵌套 Codex 的 `--cd` 固定为 `skills-root`，写权限只授予该外部工作区及其本轮日志目录。
 
-默认运行 3 轮，固定为 `concurrency=1`、`state_policy=carry_forward`，可使用 `--repeats N` 覆盖。LSM 计划和运行证据保存在输出根的 `plan.jsonl` 与 `data/runs/<run-id>/`；每个 RawBundle 都包含 prompt、原始 stdout/stderr、transcript、workspace 前后快照、Git commit、changed files、diff 和 seal。外部工作流阶段日志位于 episode workspace，并通过 `artifacts/workflow-summary.json` 挂入 RawBundle。
+默认运行 3 轮，固定为 `concurrency=1`、`state_policy=carry_forward`，每个 episode 默认最多运行 12 小时；可使用 `--repeats N` 和 `--timeout SECONDS` 覆盖。脚本只有在 LSM 返回终态、所有计划 episode 均为 `completed` 且每个 RawBundle 的 seal 验证通过后，才会在输出根写入 `completion.json` 并将最终 JSON 标记为 `terminal=true, success=true`；调用方应等待并检查该文件，不要仅根据进程已经启动或阶段日志出现来结束任务。LSM 计划和运行证据保存在输出根的 `plan.jsonl` 与 `data/runs/<run-id>/`；每个 RawBundle 都包含 prompt、原始 stdout/stderr、transcript、workspace 前后快照、Git commit、changed files、diff 和 seal。外部工作流阶段日志位于 episode workspace，并通过 `artifacts/workflow-summary.json` 挂入 RawBundle。
 
 ## 运行
 

@@ -7,6 +7,9 @@
 - 将 pytest、Hypothesis、Ruff、coverage 及项目 Makefile 驱动的 uv 虚拟环境状态统一收敛到 `.bensz-api/`，避免在项目根目录生成工具缓存目录。
 - 修复 `validate-md-ref-kernel-study` 对默认 `codex` 命令的解析：现在会正确使用 PATH 中的可执行文件。
 - 调整 `validate-md-ref-kernel-study` 的优化计划目标，改为写入外部 skills 项目的 `docs/plans/`。
+- 将 `validate-md-ref-kernel-study` 的默认 episode 超时上限从 1800 秒提高到 12 小时；仍可通过 `--timeout` 覆盖。
+- 为 `validate-md-ref-kernel-study` 增加显式 `completion.json` 终态门禁：只有全部 episode 成功且 RawBundle seal 验证通过才报告 `success=true`。
+- 让 `validate-md-ref-kernel-study` 在外部 skills 工作区下保存 `task-lsm-validate-md-ref-{TaskID}` 日志，并采用 Codex 返回的 TaskID 驱动后续阶段；嵌套 Codex 固定从该工作区运行。
 
 ### Changed（变更）
 
