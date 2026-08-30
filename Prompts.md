@@ -33,8 +33,8 @@ version=2.0.0
   - 输出：`./.bensz-api/task-validate-md-ref-{TaskID}`及其内容； 定义为{WORKSPACE}
 
 - 评估过程
-  - 输入：使用Codex运行Prompt`请调查{WORKSPACE}里状态机和验证器是否生效； 如果生效，如何协作；对于整个过程你有什么看法（比如，这个实例有没有暴露出 /Volumes/2T01/Github/skills/packages/bensz-skill-kernel 存在的源代码缺陷 ）？如果 /Volumes/2T01/Github/skills/packages/bensz-skill-kernel 或者 /Volumes/2T01/Github/skills/skills/beta/validate-md-ref 确实有缺陷，请你写个源代码优化计划，保存在 docs/plans/plan-{TaskID}.md；如果没有缺陷，请客观评价并跳过修改源代码，并且不写优化计划。`
-  - 输出：计划文件`docs/plans/plan-validate-md-ref-{TaskID}.md`
+  - 输入：使用Codex运行Prompt`请调查{WORKSPACE}里状态机和验证器是否生效； 如果生效，如何协作；对于整个过程你有什么看法（比如，这个实例有没有暴露出 /Volumes/2T01/Github/skills/packages/bensz-skill-kernel 存在的源代码缺陷 ）？如果 /Volumes/2T01/Github/skills/packages/bensz-skill-kernel 或者 /Volumes/2T01/Github/skills/skills/beta/validate-md-ref 确实有缺陷，请你写个源代码优化计划，保存在 /Volumes/2T01/Github/skills/docs/plans/plan-{TaskID}.md；如果没有缺陷，请客观评价并跳过修改源代码，并且不写优化计划。`
+  - 输出：计划文件`/Volumes/2T01/Github/skills/docs/plans/plan-validate-md-ref-{TaskID}.md`
 
 - 再优化
   - 如果 `docs/plans/plan-validate-md-ref-{TaskID}.md` 不存在，表明优化完成，结束流程。 

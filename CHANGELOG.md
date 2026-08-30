@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+- 修复 `validate-md-ref-kernel-study` 对默认 `codex` 命令的解析：现在会正确使用 PATH 中的可执行文件。
+- 调整 `validate-md-ref-kernel-study` 的优化计划目标，改为写入外部 skills 项目的 `docs/plans/`。
+
 ### Changed（变更）
 
 - 新增 `./examples` 测试规范：凡新增测试都必须通过 `StudySpec → TrialPlan → RunEngine` 等标准 LSM 链路，围绕 LSM 行为与证据完整性进行可重复评估。

@@ -67,6 +67,25 @@ def test_codex_home_rejects_missing_explicit_path(tmp_path: Path) -> None:
         raise AssertionError("missing CODEX_HOME must be rejected")
 
 
+def test_codex_executable_resolves_commands_from_path(monkeypatch, tmp_path: Path) -> None:
+    runner = load_runner()
+    fake = tmp_path / "codex"
+    fake.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    fake.chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    assert runner._resolve_codex_executable() == fake.resolve()
+
+
+def test_optimization_plan_targets_external_skills_project(tmp_path: Path) -> None:
+    runner = load_runner()
+    skills_root = tmp_path / "skills"
+    prompts = runner.build_prompts("2099-01-02-03-04-05", tmp_path / "workspace", tmp_path / "article.md", skills_root)
+    expected = str(skills_root / "docs/plans/plan-validate-md-ref-2099-01-02-03-04-05.md")
+    assert expected in prompts["evaluate"]
+    assert expected in prompts["optimize"]
+    assert str(runner.REPOSITORY / "docs/plans") not in prompts["evaluate"]
+
+
 def test_dry_run_runs_three_lsm_episodes_with_sealed_evidence(tmp_path: Path, capsys) -> None:
     runner = load_runner()
     output_root = tmp_path / "output"
@@ -112,7 +131,9 @@ def test_lsm_custom_worker_can_use_a_real_codex_executable(tmp_path: Path, monke
     fake = tmp_path / "fake-codex"
     fake.write_text("#!/usr/bin/env python3\nprint('TaskID=2099-01-02-03-04-05')\n", encoding="utf-8")
     fake.chmod(0o755)
-    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex-home"))
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
     output_root = tmp_path / "output"
     assert (
         runner.main(

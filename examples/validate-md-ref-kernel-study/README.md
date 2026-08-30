@@ -10,7 +10,9 @@ LSM 负责冻结计划、串行调度和 `carry_forward` workspace；每个 epis
 2. 生成并记录 `TaskID`；
 3. 检查指定博客文章的参考文献；
 4. 调查状态机/验证器是否生效，并在发现缺陷时写入 `docs/plans/plan-validate-md-ref-{TaskID}.md`；
-5. 仅当计划文件存在时执行优化；不存在则标记为无需优化。
+5. 仅当 skills 项目中的计划文件存在时执行优化；不存在则标记为无需优化。
+
+优化计划写入 `skills-root/docs/plans/plan-validate-md-ref-{TaskID}.md`，不会写入本 LSM 项目的 `docs/plans/`。
 
 默认运行 3 轮，固定为 `concurrency=1`、`state_policy=carry_forward`，可使用 `--repeats N` 覆盖。LSM 计划和运行证据保存在输出根的 `plan.jsonl` 与 `data/runs/<run-id>/`；每个 RawBundle 都包含 prompt、原始 stdout/stderr、transcript、workspace 前后快照、Git commit、changed files、diff 和 seal。外部工作流阶段日志位于 episode workspace，并通过 `artifacts/workflow-summary.json` 挂入 RawBundle。
 
@@ -38,3 +40,5 @@ uv run lsm episode validate <episode-id> --data-root tmp/validate-md-ref-kernel-
 ```
 
 可通过 `--codex-home`、`--codex-executable`、`--model`、`--reasoning-effort`、`--timeout`、`--article` 和 `--skills-root` 覆盖运行参数。脚本只向嵌套 Codex 传递 `PATH`、语言环境和 `CODEX_HOME`，不会复制或归档外部凭据文件。
+
+未提供 `--codex-executable` 时，脚本会先读取 `CODEX_EXECUTABLE`，否则从 `PATH` 查找 `codex`；只有显式路径或 PATH 命令解析成功后才会启动真实运行。

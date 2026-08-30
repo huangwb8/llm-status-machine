@@ -14,6 +14,7 @@ import json
 import os
 import platform
 import re
+import shutil
 import subprocess
 import sys
 from datetime import UTC, datetime, timedelta
@@ -63,6 +64,22 @@ def _resolve_codex_home(explicit: Path | None = None) -> Path | None:
             return None
         raise ValueError(f"CODEX_HOME must reference an existing directory: {candidate}")
     return candidate
+
+
+def _resolve_codex_executable(explicit: Path | None = None) -> Path:
+    """Resolve an executable path while preserving PATH-based commands."""
+
+    requested = str(explicit or os.environ.get("CODEX_EXECUTABLE", "codex"))
+    discovered = shutil.which(requested)
+    if discovered:
+        return Path(discovered).expanduser().resolve()
+    candidate = Path(requested).expanduser()
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+    candidate = candidate.resolve()
+    if candidate.is_file() and os.access(candidate, os.X_OK):
+        return candidate
+    raise ValueError(f"Codex executable was not found or is not executable: {requested}")
 
 
 def _redact(value: str, codex_home: str | None = None) -> str:
@@ -187,7 +204,7 @@ def run_codex(
 
 
 def build_prompts(task_id: str, workspace: Path, article: Path, skills_root: Path) -> dict[str, str]:
-    plan = REPOSITORY / "docs/plans" / f"plan-validate-md-ref-{task_id}.md"
+    plan = skills_root / "docs/plans" / f"plan-validate-md-ref-{task_id}.md"
     return {
         "update": f"使用 install-bensz-skills 安装 {skills_root / 'skills/beta/validate-md-ref'} 。更新本机 bensz-skill-kernel 这个python包至最新版；源代码在 {skills_root / 'packages/bensz-skill-kernel'} 。",
         "task_id": "生成一个标签作为本次测试的唯一ID：TaskID={yyyy-mm-dd-HH-mm-ss}。这里就是时间戳；每次测试都开一个新的；但如果用户的多轮对话在同一个会话里，不能重复地建。",
@@ -256,7 +273,7 @@ def episode_worker(argv: list[str]) -> int:
             )
             print(json.dumps({"type": "workflow.failed", "task_id": task_id}, ensure_ascii=False), flush=True)
             return 1
-    plan_path = REPOSITORY / "docs/plans" / f"plan-validate-md-ref-{task_id}.md"
+    plan_path = args.skills_root / "docs/plans" / f"plan-validate-md-ref-{task_id}.md"
     optimization = "not-needed"
     if plan_path.exists():
         result = run_codex(
@@ -328,7 +345,7 @@ def build_study(
         "--skills-root",
         str(skills_root.resolve()),
         "--codex-executable",
-        str(executable.resolve()),
+        str(executable),
         "--model",
         model,
         "--reasoning-effort",
@@ -374,9 +391,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output-root", type=Path, default=Path("tmp/validate-md-ref-kernel-study"))
     parser.add_argument("--article", type=Path, default=DEFAULT_ARTICLE)
     parser.add_argument("--skills-root", type=Path, default=DEFAULT_SKILLS_ROOT)
-    parser.add_argument(
-        "--codex-executable", type=Path, default=Path(os.environ.get("CODEX_EXECUTABLE", "codex"))
-    )
+    parser.add_argument("--codex-executable", type=Path)
     parser.add_argument("--model", default="gpt-5.6-sol")
     parser.add_argument("--reasoning-effort", default="high")
     parser.add_argument("--timeout", type=float, default=1800)
@@ -392,6 +407,13 @@ def main(argv: list[str] | None = None) -> int:
         codex_home = _resolve_codex_home(args.codex_home)
     except ValueError as error:
         parser.error(str(error))
+    if args.dry_run and args.codex_executable is None and not os.environ.get("CODEX_EXECUTABLE"):
+        codex_executable = Path("codex")
+    else:
+        try:
+            codex_executable = _resolve_codex_executable(args.codex_executable)
+        except ValueError as error:
+            parser.error(str(error))
     if not args.dry_run and codex_home is None:
         parser.error("CODEX_HOME must reference an existing external Codex configuration")
     if codex_home:
@@ -405,7 +427,7 @@ def main(argv: list[str] | None = None) -> int:
         repeats=args.repeats,
         article=args.article,
         skills_root=args.skills_root,
-        executable=args.codex_executable,
+        executable=codex_executable,
         model=args.model,
         reasoning_effort=args.reasoning_effort,
         timeout=args.timeout,
