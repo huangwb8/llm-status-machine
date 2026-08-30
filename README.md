@@ -75,8 +75,15 @@ source workspace 从不直接执行；每个 episode 在独立副本中初始化
 
 前置条件：Python 3.12+、[uv](https://docs.astral.sh/uv/) 和 Git。以下命令使用内置 Simulator；它会在本地模拟一个会产生事件、artifact 和文件修改的 agent，因此不需要模型密钥。
 
+项目会将 pytest、Hypothesis、Ruff、coverage 和 uv 的本地状态统一放在 `.bensz-api/` 下。推荐使用下面的 `make` 入口；如果直接运行 `uv`，请先在项目根目录设置：
+
 ```bash
-uv sync --frozen --extra test
+export UV_PROJECT_ENVIRONMENT=.bensz-api/.venv
+export HYPOTHESIS_STORAGE_DIRECTORY=.bensz-api/.hypothesis
+```
+
+```bash
+make sync
 
 # 初始化一个独立实验目录；会生成 .lsm/ 和 study.example.yml。
 uv run lsm init tmp/quickstart

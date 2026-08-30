@@ -4,6 +4,7 @@
 
 ## [Unreleased]
 
+- 将 pytest、Hypothesis、Ruff、coverage 及项目 Makefile 驱动的 uv 虚拟环境状态统一收敛到 `.bensz-api/`，避免在项目根目录生成工具缓存目录。
 - 修复 `validate-md-ref-kernel-study` 对默认 `codex` 命令的解析：现在会正确使用 PATH 中的可执行文件。
 - 调整 `validate-md-ref-kernel-study` 的优化计划目标，改为写入外部 skills 项目的 `docs/plans/`。
 
